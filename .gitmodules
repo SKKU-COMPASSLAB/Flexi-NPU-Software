@@ -1,0 +1,3 @@
+[submodule "sw/flexi-isa-tests"]
+	path = sw/flexi-isa-tests
+	url = https://github.com/SKKU-COMPASSLAB/flexi_runtime.git
