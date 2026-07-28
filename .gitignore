@@ -1,0 +1,9 @@
+*.so
+*.bak
+*.o
+test/bin
+sim/build
+tensor_lib/build
+.vscode
+.backup
+.vscode
