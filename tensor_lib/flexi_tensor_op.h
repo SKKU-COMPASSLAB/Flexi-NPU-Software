@@ -19,6 +19,8 @@ flexi_tensor_error_t flexi_tensor_op_conv2d(flexi_tensor_t* out, const flexi_ten
 flexi_tensor_error_t flexi_tensor_op_maxpool2d(flexi_tensor_t* out, const flexi_tensor_t* x, const size_t kernel_size, const size_t stride, const size_t padding);
 flexi_tensor_error_t flexi_tensor_op_avgpool2d(flexi_tensor_t* out, const flexi_tensor_t* x, const size_t kernel_size, const size_t stride, const size_t padding);
 flexi_tensor_error_t flexi_tensor_op_softmax(flexi_tensor_t* out, const flexi_tensor_t* x);
+flexi_tensor_error_t flexi_tensor_op_quant_per_tensor(flexi_tensor_t* out, const flexi_tensor_t* x, const fnblas_scalar_t scale, const fnblas_scalar_t zero_point, const fnblas_dtype_t out_dtype);
+flexi_tensor_error_t flexi_tensor_op_dequant_per_tensor(flexi_tensor_t* out, const flexi_tensor_t* x, const fnblas_scalar_t scale, const fnblas_scalar_t zero_point, const fnblas_dtype_t out_dtype);
 
 #ifdef __cplusplus
 }

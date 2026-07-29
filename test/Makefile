@@ -5,6 +5,9 @@ T2_BLAS_BF16_TEST := $(TEST_BIN_DIR)/t2_blas_bf16_test
 T3_BLAS_FP4_TEST := $(TEST_BIN_DIR)/t3_blas_fp4_test
 T4_BLAS_MATRIX_TEST := $(TEST_BIN_DIR)/t4_blas_matrix_test
 T5_TENSOR_VIEW_TEST := $(TEST_BIN_DIR)/t5_tensor_view
+T6_DTYPE_CONVERSION_TEST := $(TEST_BIN_DIR)/t6_dtype_conversion_test
+T7_QUANTIZATION_TEST := $(TEST_BIN_DIR)/t7_quantization_test
+T8_QUANTIZATION_ERROR := $(TEST_BIN_DIR)/t8_quantization_error
 MODEL_TEST_NAMES := \
 	b0_dram_loopback \
 	b1_dram_tiled_loopback \
@@ -20,7 +23,10 @@ BLAS_TESTS := \
 	$(T2_BLAS_BF16_TEST) \
 	$(T3_BLAS_FP4_TEST) \
 	$(T4_BLAS_MATRIX_TEST) \
-	$(T5_TENSOR_VIEW_TEST)
+	$(T5_TENSOR_VIEW_TEST) \
+	$(T6_DTYPE_CONVERSION_TEST) \
+	$(T7_QUANTIZATION_TEST) \
+	$(T8_QUANTIZATION_ERROR)
 
 RUNTIME_DIR := sw/flexi-isa-tests
 BENCH_COMMON := $(RUNTIME_DIR)/riscv-tests/benchmarks/common
@@ -51,7 +57,9 @@ TEST_BAREMETAL_CFLAGS := \
 
 .PHONY: \
 	t1_blas_fp32_test t2_blas_bf16_test t3_blas_fp4_test \
-	t4_blas_matrix_test t5_tensor_view test-blas-fp32 test-blas-bf16 \
+	t4_blas_matrix_test t5_tensor_view t6_dtype_conversion_test \
+	t7_quantization_test t8_quantization_error \
+	test-blas-fp32 test-blas-bf16 \
 	test-blas-fp4 test-blas-matrix test-tensor-view test-blas \
 	$(MODEL_TEST_NAMES) model-tests test-dram-loopback test-model test-clean
 
@@ -73,6 +81,15 @@ $(T4_BLAS_MATRIX_TEST): $(TEST_DIR)/t4_blas_matrix_test.cc $(FLEXI_TENSOR_HOST_L
 $(T5_TENSOR_VIEW_TEST): $(TEST_DIR)/t5_tensor_view.cc $(FLEXI_TENSOR_HOST_LIB) | $(TEST_BIN_DIR)
 	$(CXX) $(TEST_HOST_CFLAGS) $< $(TEST_HOST_LDFLAGS) -o $@
 
+$(T6_DTYPE_CONVERSION_TEST): $(TEST_DIR)/t6_dtype_conversion_test.cc $(FLEXI_TENSOR_HOST_LIB) | $(TEST_BIN_DIR)
+	$(CXX) $(TEST_HOST_CFLAGS) $< $(TEST_HOST_LDFLAGS) -o $@
+
+$(T7_QUANTIZATION_TEST): $(TEST_DIR)/t7_quantization_test.cc $(FLEXI_TENSOR_HOST_LIB) | $(TEST_BIN_DIR)
+	$(CXX) $(TEST_HOST_CFLAGS) $< $(TEST_HOST_LDFLAGS) -o $@
+
+$(T8_QUANTIZATION_ERROR): $(TEST_DIR)/t8_quantization_error.cc $(FLEXI_TENSOR_HOST_LIB) | $(TEST_BIN_DIR)
+	$(CXX) $(TEST_HOST_CFLAGS) $< $(TEST_HOST_LDFLAGS) -o $@
+
 $(TEST_BIN_DIR)/%-baremetal: $(TEST_DIR)/%.c .backup/flexi/flexi.h | $(TEST_BIN_DIR)
 	$(CC_RV) $(TEST_BAREMETAL_CFLAGS) -T $(BENCH_COMMON)/test.ld $< $(wildcard $(BENCH_COMMON)/*.c) $(wildcard $(BENCH_COMMON)/*.S) -lgcc -o $@
 
@@ -81,6 +98,9 @@ t2_blas_bf16_test: $(T2_BLAS_BF16_TEST)
 t3_blas_fp4_test: $(T3_BLAS_FP4_TEST)
 t4_blas_matrix_test: $(T4_BLAS_MATRIX_TEST)
 t5_tensor_view: $(T5_TENSOR_VIEW_TEST)
+t6_dtype_conversion_test: $(T6_DTYPE_CONVERSION_TEST)
+t7_quantization_test: $(T7_QUANTIZATION_TEST)
+t8_quantization_error: $(T8_QUANTIZATION_ERROR)
 $(MODEL_TEST_NAMES): %: $(TEST_BIN_DIR)/%-baremetal
 model-tests: $(MODEL_TESTS)
 
@@ -105,6 +125,9 @@ test-blas: $(BLAS_TESTS)
 	$(T3_BLAS_FP4_TEST)
 	$(T4_BLAS_MATRIX_TEST)
 	$(T5_TENSOR_VIEW_TEST)
+	$(T6_DTYPE_CONVERSION_TEST)
+	$(T7_QUANTIZATION_TEST)
+	$(T8_QUANTIZATION_ERROR)
 
 test-dram-loopback: $(B0_DRAM_LOOPBACK)
 	$(SPIKE) --isa=rv64gc --extension=flexi $(B0_DRAM_LOOPBACK)

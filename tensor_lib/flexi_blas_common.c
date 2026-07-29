@@ -43,7 +43,7 @@ size_t _fnblas_dtype_unpacked_size_of(fnblas_dtype_t dtype)
     if (dtype == INT4 || dtype == INT32)
         return sizeof(int32_t);
     if (dtype == INT8)
-        return sizeof(uint8_t);
+        return sizeof(int8_t);
     errno = EINVAL;
     return 0;
 }
@@ -319,46 +319,62 @@ byte_t _fnblas_int32_to_int4_bits(int32_t value)
 int32_t _fnblas_int32_arithmetic(
     int32_t lhs, int32_t rhs, fnblas_arithmetic_op_t op)
 {
-    uint32_t left, right, value;
-    memcpy(&left, &lhs, sizeof(left));
-    memcpy(&right, &rhs, sizeof(right));
+    int64_t value;
     switch (op) {
-        case ADD: value = left + right; break;
-        case SUBTRACT: value = left - right; break;
-        case MULTIPLY: value = left * right; break;
+        case ADD: value = (int64_t)lhs + (int64_t)rhs; break;
+        case SUBTRACT: value = (int64_t)lhs - (int64_t)rhs; break;
+        case MULTIPLY: value = (int64_t)lhs * (int64_t)rhs; break;
         case DIVIDE:
             if (rhs == 0) {
                 errno = EDOM;
                 return 0;
             }
-            if (lhs == INT32_MIN && rhs == -1)
-                return INT32_MIN;
-            return lhs / rhs;
+            value = lhs == INT32_MIN && rhs == -1 ? INT32_MAX : lhs / rhs;
+            break;
         default:
             errno = EINVAL;
             return 0;
     }
-    memcpy(&lhs, &value, sizeof(lhs));
-    return lhs;
+    if (value < INT32_MIN) {
+        errno = ERANGE;
+        return INT32_MIN;
+    }
+    if (value > INT32_MAX) {
+        errno = ERANGE;
+        return INT32_MAX;
+    }
+    return (int32_t)value;
 }
 
-uint8_t _fnblas_uint8_arithmetic(
-    uint8_t lhs, uint8_t rhs, fnblas_arithmetic_op_t op)
+int8_t _fnblas_int8_arithmetic(
+    int8_t lhs, int8_t rhs, fnblas_arithmetic_op_t op)
 {
+    int32_t value;
     switch (op) {
-        case ADD: return (uint8_t)(lhs + rhs);
-        case SUBTRACT: return (uint8_t)(lhs - rhs);
-        case MULTIPLY: return (uint8_t)(lhs * rhs);
+        case ADD: value = (int32_t)lhs + (int32_t)rhs; break;
+        case SUBTRACT: value = (int32_t)lhs - (int32_t)rhs; break;
+        case MULTIPLY: value = (int32_t)lhs * (int32_t)rhs; break;
         case DIVIDE:
             if (rhs == 0) {
                 errno = EDOM;
                 return 0;
             }
-            return (uint8_t)(lhs / rhs);
+            value = lhs == INT8_MIN && rhs == -1 ? INT8_MAX : lhs / rhs;
+            break;
         default:
             errno = EINVAL;
-            return 0;
+            value = 0;
+            break;
     }
+    if (value < INT8_MIN) {
+        errno = ERANGE;
+        return INT8_MIN;
+    }
+    if (value > INT8_MAX) {
+        errno = ERANGE;
+        return INT8_MAX;
+    }
+    return (int8_t)value;
 }
 
 float _fnblas_float_arithmetic(
@@ -530,6 +546,24 @@ void _fnblas_deallocate_buffer(byte_t* buffer)
 #endif
 }
 
+static float fnblas_clamp_float_for_packing(float value, fnblas_dtype_t dtype)
+{
+    const float maximum = dtype == FP16
+        ? 65504.0f
+        : fnblas_dtype_bits_to_float(UINT32_C(0x7F7F0000));
+    if (isnan(value))
+        return value;
+    if (value > maximum) {
+        errno = ERANGE;
+        return maximum;
+    }
+    if (value < -maximum) {
+        errno = ERANGE;
+        return -maximum;
+    }
+    return value;
+}
+
 void _fnblas_pack_buffer(
     const byte_t* unpacked, size_t n, fnblas_dtype_t dtype, byte_t* packed)
 {
@@ -562,7 +596,7 @@ void _fnblas_pack_buffer(
             );
     } else if (dtype == FP16 || dtype == BF16) {
         for (index = 0; index < n; ++index) {
-            const float value = ((const float*)unpacked)[index];
+            const float value = fnblas_clamp_float_for_packing(((const float*)unpacked)[index], dtype);
             const uint16_t bits = dtype == FP16
                 ? fnblas_dtype_fp32_to_fp16_bits(value)
                 : _fnblas_fp32_to_bf16_bits(value);

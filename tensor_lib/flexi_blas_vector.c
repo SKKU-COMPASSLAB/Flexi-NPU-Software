@@ -249,17 +249,15 @@ fnblas_error_t fnblas_op_sv_add(
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = src[index] + rhs->_value.f32;
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
-        const uint8_t* restrict src = lhs->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict src = (const int8_t*)lhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = (uint8_t)(src[index] + rhs->_value.u8);
+            dst[index] = _fnblas_int8_arithmetic(src[index], rhs->_value.i8, ADD);
     } else {
-        uint32_t scalar;
-        uint32_t* restrict dst = (uint32_t*)result->_buffer;
-        const uint32_t* restrict src = (const uint32_t*)lhs->_buffer;
-        memcpy(&scalar, &rhs->_value.i32, sizeof(scalar));
+        int32_t* restrict dst = (int32_t*)result->_buffer;
+        const int32_t* restrict src = (const int32_t*)lhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = src[index] + scalar;
+            dst[index] = _fnblas_int32_arithmetic(src[index], rhs->_value.i32, ADD);
     }
     return FNBLAS_SUCCESS;
 }
@@ -278,17 +276,15 @@ fnblas_error_t fnblas_op_sv_sub(
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = src[index] - rhs->_value.f32;
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
-        const uint8_t* restrict src = lhs->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict src = (const int8_t*)lhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = (uint8_t)(src[index] - rhs->_value.u8);
+            dst[index] = _fnblas_int8_arithmetic(src[index], rhs->_value.i8, SUBTRACT);
     } else {
-        uint32_t scalar;
-        uint32_t* restrict dst = (uint32_t*)result->_buffer;
-        const uint32_t* restrict src = (const uint32_t*)lhs->_buffer;
-        memcpy(&scalar, &rhs->_value.i32, sizeof(scalar));
+        int32_t* restrict dst = (int32_t*)result->_buffer;
+        const int32_t* restrict src = (const int32_t*)lhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = src[index] - scalar;
+            dst[index] = _fnblas_int32_arithmetic(src[index], rhs->_value.i32, SUBTRACT);
     }
     return FNBLAS_SUCCESS;
 }
@@ -307,17 +303,15 @@ fnblas_error_t fnblas_op_sv_mul(
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = src[index] * rhs->_value.f32;
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
-        const uint8_t* restrict src = lhs->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict src = (const int8_t*)lhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = (uint8_t)(src[index] * rhs->_value.u8);
+            dst[index] = _fnblas_int8_arithmetic(src[index], rhs->_value.i8, MULTIPLY);
     } else {
-        uint32_t scalar;
-        uint32_t* restrict dst = (uint32_t*)result->_buffer;
-        const uint32_t* restrict src = (const uint32_t*)lhs->_buffer;
-        memcpy(&scalar, &rhs->_value.i32, sizeof(scalar));
+        int32_t* restrict dst = (int32_t*)result->_buffer;
+        const int32_t* restrict src = (const int32_t*)lhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = src[index] * scalar;
+            dst[index] = _fnblas_int32_arithmetic(src[index], rhs->_value.i32, MULTIPLY);
     }
     return FNBLAS_SUCCESS;
 }
@@ -336,23 +330,19 @@ fnblas_error_t fnblas_op_sv_div(
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = src[index] / rhs->_value.f32;
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
-        const uint8_t* restrict src = lhs->_buffer;
-        if (rhs->_value.u8 == 0)
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict src = (const int8_t*)lhs->_buffer;
+        if (rhs->_value.i8 == 0)
             return FNBLAS_ERR_UNKNOWN;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = (uint8_t)(src[index] / rhs->_value.u8);
+            dst[index] = _fnblas_int8_arithmetic(src[index], rhs->_value.i8, DIVIDE);
     } else {
         int32_t* restrict dst = (int32_t*)result->_buffer;
         const int32_t* restrict src = (const int32_t*)lhs->_buffer;
         if (rhs->_value.i32 == 0)
             return FNBLAS_ERR_UNKNOWN;
-        for (index = 0; index < lhs->_n_elements; ++index) {
-            dst[index] =
-                src[index] == INT32_MIN && rhs->_value.i32 == -1
-                ? INT32_MIN
-                : src[index] / rhs->_value.i32;
-        }
+        for (index = 0; index < lhs->_n_elements; ++index)
+            dst[index] = _fnblas_int32_arithmetic(src[index], rhs->_value.i32, DIVIDE);
     }
     return FNBLAS_SUCCESS;
 }
@@ -370,10 +360,10 @@ fnblas_error_t fnblas_op_sv_max(fnblas_vector_t* result, const fnblas_vector_t* 
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = src[index] > rhs->_value.f32 ? src[index] : rhs->_value.f32;
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
-        const uint8_t* restrict src = lhs->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict src = (const int8_t*)lhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = src[index] > rhs->_value.u8 ? src[index] : rhs->_value.u8;
+            dst[index] = src[index] > rhs->_value.i8 ? src[index] : rhs->_value.i8;
     } else {
         int32_t* restrict dst = (int32_t*)result->_buffer;
         const int32_t* restrict src = (const int32_t*)lhs->_buffer;
@@ -396,10 +386,10 @@ fnblas_error_t fnblas_op_sv_min(fnblas_vector_t* result, const fnblas_vector_t* 
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = src[index] < rhs->_value.f32 ? src[index] : rhs->_value.f32;
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
-        const uint8_t* restrict src = lhs->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict src = (const int8_t*)lhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = src[index] < rhs->_value.u8 ? src[index] : rhs->_value.u8;
+            dst[index] = src[index] < rhs->_value.i8 ? src[index] : rhs->_value.i8;
     } else {
         int32_t* restrict dst = (int32_t*)result->_buffer;
         const int32_t* restrict src = (const int32_t*)lhs->_buffer;
@@ -424,17 +414,17 @@ fnblas_error_t fnblas_op_ve_add(
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = left[index] + right[index];
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict left = (const int8_t*)lhs->_buffer;
+        const int8_t* restrict right = (const int8_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = (uint8_t)(
-                lhs->_buffer[index] + rhs->_buffer[index]
-            );
+            dst[index] = _fnblas_int8_arithmetic(left[index], right[index], ADD);
     } else {
-        uint32_t* restrict dst = (uint32_t*)result->_buffer;
-        const uint32_t* restrict left = (const uint32_t*)lhs->_buffer;
-        const uint32_t* restrict right = (const uint32_t*)rhs->_buffer;
+        int32_t* restrict dst = (int32_t*)result->_buffer;
+        const int32_t* restrict left = (const int32_t*)lhs->_buffer;
+        const int32_t* restrict right = (const int32_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = left[index] + right[index];
+            dst[index] = _fnblas_int32_arithmetic(left[index], right[index], ADD);
     }
     return FNBLAS_SUCCESS;
 }
@@ -454,17 +444,17 @@ fnblas_error_t fnblas_op_ve_sub(
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = left[index] - right[index];
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict left = (const int8_t*)lhs->_buffer;
+        const int8_t* restrict right = (const int8_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = (uint8_t)(
-                lhs->_buffer[index] - rhs->_buffer[index]
-            );
+            dst[index] = _fnblas_int8_arithmetic(left[index], right[index], SUBTRACT);
     } else {
-        uint32_t* restrict dst = (uint32_t*)result->_buffer;
-        const uint32_t* restrict left = (const uint32_t*)lhs->_buffer;
-        const uint32_t* restrict right = (const uint32_t*)rhs->_buffer;
+        int32_t* restrict dst = (int32_t*)result->_buffer;
+        const int32_t* restrict left = (const int32_t*)lhs->_buffer;
+        const int32_t* restrict right = (const int32_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = left[index] - right[index];
+            dst[index] = _fnblas_int32_arithmetic(left[index], right[index], SUBTRACT);
     }
     return FNBLAS_SUCCESS;
 }
@@ -484,17 +474,17 @@ fnblas_error_t fnblas_op_ve_mul(
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = left[index] * right[index];
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict left = (const int8_t*)lhs->_buffer;
+        const int8_t* restrict right = (const int8_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = (uint8_t)(
-                lhs->_buffer[index] * rhs->_buffer[index]
-            );
+            dst[index] = _fnblas_int8_arithmetic(left[index], right[index], MULTIPLY);
     } else {
-        uint32_t* restrict dst = (uint32_t*)result->_buffer;
-        const uint32_t* restrict left = (const uint32_t*)lhs->_buffer;
-        const uint32_t* restrict right = (const uint32_t*)rhs->_buffer;
+        int32_t* restrict dst = (int32_t*)result->_buffer;
+        const int32_t* restrict left = (const int32_t*)lhs->_buffer;
+        const int32_t* restrict right = (const int32_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = left[index] * right[index];
+            dst[index] = _fnblas_int32_arithmetic(left[index], right[index], MULTIPLY);
     }
     return FNBLAS_SUCCESS;
 }
@@ -514,15 +504,15 @@ fnblas_error_t fnblas_op_ve_div(
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = left[index] / right[index];
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict left = (const int8_t*)lhs->_buffer;
+        const int8_t* restrict right = (const int8_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index) {
-            if (rhs->_buffer[index] == 0)
+            if (right[index] == 0)
                 return FNBLAS_ERR_UNKNOWN;
         }
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = (uint8_t)(
-                lhs->_buffer[index] / rhs->_buffer[index]
-            );
+            dst[index] = _fnblas_int8_arithmetic(left[index], right[index], DIVIDE);
     } else {
         int32_t* restrict dst = (int32_t*)result->_buffer;
         const int32_t* restrict left = (const int32_t*)lhs->_buffer;
@@ -531,12 +521,8 @@ fnblas_error_t fnblas_op_ve_div(
             if (right[index] == 0)
                 return FNBLAS_ERR_UNKNOWN;
         }
-        for (index = 0; index < lhs->_n_elements; ++index) {
-            dst[index] =
-                left[index] == INT32_MIN && right[index] == -1
-                ? INT32_MIN
-                : left[index] / right[index];
-        }
+        for (index = 0; index < lhs->_n_elements; ++index)
+            dst[index] = _fnblas_int32_arithmetic(left[index], right[index], DIVIDE);
     }
     return FNBLAS_SUCCESS;
 }
@@ -555,9 +541,11 @@ fnblas_error_t fnblas_op_ve_max(fnblas_vector_t* result, const fnblas_vector_t* 
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = left[index] > right[index] ? left[index] : right[index];
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict left = (const int8_t*)lhs->_buffer;
+        const int8_t* restrict right = (const int8_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = lhs->_buffer[index] > rhs->_buffer[index] ? lhs->_buffer[index] : rhs->_buffer[index];
+            dst[index] = left[index] > right[index] ? left[index] : right[index];
     } else {
         int32_t* restrict dst = (int32_t*)result->_buffer;
         const int32_t* restrict left = (const int32_t*)lhs->_buffer;
@@ -582,9 +570,11 @@ fnblas_error_t fnblas_op_ve_min(fnblas_vector_t* result, const fnblas_vector_t* 
         for (index = 0; index < lhs->_n_elements; ++index)
             dst[index] = left[index] < right[index] ? left[index] : right[index];
     } else if (lhs->_dtype == INT8) {
-        uint8_t* restrict dst = result->_buffer;
+        int8_t* restrict dst = (int8_t*)result->_buffer;
+        const int8_t* restrict left = (const int8_t*)lhs->_buffer;
+        const int8_t* restrict right = (const int8_t*)rhs->_buffer;
         for (index = 0; index < lhs->_n_elements; ++index)
-            dst[index] = lhs->_buffer[index] < rhs->_buffer[index] ? lhs->_buffer[index] : rhs->_buffer[index];
+            dst[index] = left[index] < right[index] ? left[index] : right[index];
     } else {
         int32_t* restrict dst = (int32_t*)result->_buffer;
         const int32_t* restrict left = (const int32_t*)lhs->_buffer;
@@ -616,19 +606,13 @@ fnblas_error_t fnblas_op_vv_dot(
             sum += left[index] * right[index];
         result->_value.f32 = sum;
     } else if (lhs->_dtype == INT8) {
-        uint8_t sum = 0;
+        const int8_t* left = (const int8_t*)lhs->_buffer;
+        const int8_t* right = (const int8_t*)rhs->_buffer;
+        int8_t sum = 0;
         for (index = 0; index < lhs->_n_elements; ++index) {
-            sum = _fnblas_uint8_arithmetic(
-                sum,
-                _fnblas_uint8_arithmetic(
-                    lhs->_buffer[index],
-                    rhs->_buffer[index],
-                    MULTIPLY
-                ),
-                ADD
-            );
+            sum = _fnblas_int8_arithmetic(sum, _fnblas_int8_arithmetic(left[index], right[index], MULTIPLY), ADD);
         }
-        result->_value.u8 = sum;
+        result->_value.i8 = sum;
     } else {
         const int32_t* left = (const int32_t*)lhs->_buffer;
         const int32_t* right = (const int32_t*)rhs->_buffer;
@@ -661,9 +645,10 @@ fnblas_error_t fnblas_op_vr_sum(fnblas_scalar_t* result, const fnblas_vector_t* 
         for (index = 0; index < input->_n_elements; ++index) sum += source[index];
         result->_value.f32 = sum;
     } else if (input->_dtype == INT8) {
-        uint8_t sum = 0;
-        for (index = 0; index < input->_n_elements; ++index) sum = _fnblas_uint8_arithmetic(sum, input->_buffer[index], ADD);
-        result->_value.u8 = sum;
+        const int8_t* source = (const int8_t*)input->_buffer;
+        int8_t sum = 0;
+        for (index = 0; index < input->_n_elements; ++index) sum = _fnblas_int8_arithmetic(sum, source[index], ADD);
+        result->_value.i8 = sum;
     } else {
         const int32_t* source = (const int32_t*)input->_buffer;
         int32_t sum = 0;
@@ -688,10 +673,11 @@ fnblas_error_t fnblas_op_vr_mean(fnblas_scalar_t* result, const fnblas_vector_t*
         for (index = 0; index < input->_n_elements; ++index) sum += source[index];
         result->_value.f32 = sum / (float)input->_n_elements;
     } else if (input->_dtype == INT8) {
-        uint8_t sum = 0;
-        if (input->_n_elements > UINT8_MAX) return FNBLAS_ERR_MISMATCH;
-        for (index = 0; index < input->_n_elements; ++index) sum = _fnblas_uint8_arithmetic(sum, input->_buffer[index], ADD);
-        result->_value.u8 = (uint8_t)(sum / (uint8_t)input->_n_elements);
+        const int8_t* source = (const int8_t*)input->_buffer;
+        int8_t sum = 0;
+        if (input->_n_elements > INT8_MAX) return FNBLAS_ERR_MISMATCH;
+        for (index = 0; index < input->_n_elements; ++index) sum = _fnblas_int8_arithmetic(sum, source[index], ADD);
+        result->_value.i8 = (int8_t)(sum / (int8_t)input->_n_elements);
     } else {
         const int32_t* source = (const int32_t*)input->_buffer;
         int32_t sum = 0;
@@ -717,9 +703,10 @@ fnblas_error_t fnblas_op_vr_max(fnblas_scalar_t* result, const fnblas_vector_t* 
         for (index = 1; index < input->_n_elements; ++index) maximum = source[index] > maximum ? source[index] : maximum;
         result->_value.f32 = maximum;
     } else if (input->_dtype == INT8) {
-        uint8_t maximum = input->_buffer[0];
-        for (index = 1; index < input->_n_elements; ++index) maximum = input->_buffer[index] > maximum ? input->_buffer[index] : maximum;
-        result->_value.u8 = maximum;
+        const int8_t* source = (const int8_t*)input->_buffer;
+        int8_t maximum = source[0];
+        for (index = 1; index < input->_n_elements; ++index) maximum = source[index] > maximum ? source[index] : maximum;
+        result->_value.i8 = maximum;
     } else {
         const int32_t* source = (const int32_t*)input->_buffer;
         int32_t maximum = source[0];
@@ -744,9 +731,10 @@ fnblas_error_t fnblas_op_vr_min(fnblas_scalar_t* result, const fnblas_vector_t* 
         for (index = 1; index < input->_n_elements; ++index) minimum = source[index] < minimum ? source[index] : minimum;
         result->_value.f32 = minimum;
     } else if (input->_dtype == INT8) {
-        uint8_t minimum = input->_buffer[0];
-        for (index = 1; index < input->_n_elements; ++index) minimum = input->_buffer[index] < minimum ? input->_buffer[index] : minimum;
-        result->_value.u8 = minimum;
+        const int8_t* source = (const int8_t*)input->_buffer;
+        int8_t minimum = source[0];
+        for (index = 1; index < input->_n_elements; ++index) minimum = source[index] < minimum ? source[index] : minimum;
+        result->_value.i8 = minimum;
     } else {
         const int32_t* source = (const int32_t*)input->_buffer;
         int32_t minimum = source[0];
@@ -774,5 +762,143 @@ fnblas_error_t fnblas_op_vi_exp(fnblas_vector_t* result, const fnblas_vector_t* 
     destination = (float*)result->_buffer;
     source = (const float*)input->_buffer;
     for (index = 0; index < input->_n_elements; ++index) destination[index] = expf(source[index]);
+    return FNBLAS_SUCCESS;
+}
+
+static fnblas_error_t fnblas_prepare_mixed_vector(fnblas_vector_t* result, const fnblas_vector_t* input, fnblas_dtype_t dtype)
+{
+    if (result == NULL || input == NULL || result == input || !_fnblas_dtype_is_valid(input->_dtype) || !_fnblas_dtype_is_valid(dtype)) return FNBLAS_ERR_UNKNOWN;
+    if (input->_n_elements != 0 && input->_buffer == NULL) return FNBLAS_ERR_UNKNOWN;
+    if (_fnblas_buffer_is_allocated(result->_status)) {
+        if (result->_dtype != dtype || result->_n_elements != input->_n_elements || result->_buffer == input->_buffer) return FNBLAS_ERR_MISMATCH;
+        return FNBLAS_SUCCESS;
+    }
+    return fnblas_vector_create(result, input->_n_elements, dtype);
+}
+
+static double fnblas_vector_numeric_value(const fnblas_vector_t* input, size_t index)
+{
+    if (_fnblas_dtype_is_float(input->_dtype)) return (double)((const float*)input->_buffer)[index];
+    if (input->_dtype == INT8) return (double)((const int8_t*)input->_buffer)[index];
+    return (double)((const int32_t*)input->_buffer)[index];
+}
+
+static int32_t fnblas_vector_clamp_integer(double value, fnblas_dtype_t dtype)
+{
+    double minimum;
+    double maximum;
+    if (isnan(value)) {
+        errno = EDOM;
+        return 0;
+    }
+    if (dtype == INT4) {
+        minimum = -8.0;
+        maximum = 7.0;
+    } else if (dtype == INT8) {
+        minimum = (double)INT8_MIN;
+        maximum = (double)INT8_MAX;
+    } else {
+        minimum = (double)INT32_MIN;
+        maximum = (double)INT32_MAX;
+    }
+    if (value < minimum) {
+        errno = ERANGE;
+        return (int32_t)minimum;
+    }
+    if (value > maximum) {
+        errno = ERANGE;
+        return (int32_t)maximum;
+    }
+    return (int32_t)value;
+}
+
+static void fnblas_vector_set_numeric_value(fnblas_vector_t* result, size_t index, double value)
+{
+    if (_fnblas_dtype_is_float(result->_dtype)) {
+        ((float*)result->_buffer)[index] = (float)value;
+    } else {
+        const int32_t integer = fnblas_vector_clamp_integer(round(value), result->_dtype);
+        if (result->_dtype == INT8)
+            ((int8_t*)result->_buffer)[index] = (int8_t)integer;
+        else
+            ((int32_t*)result->_buffer)[index] = integer;
+    }
+}
+
+fnblas_error_t fnblas_op_vc_cast(fnblas_vector_t* result, const fnblas_vector_t* input, fnblas_dtype_t dtype)
+{
+    fnblas_error_t error;
+    size_t index;
+    if (input == NULL || !_fnblas_dtype_is_valid(dtype)) return FNBLAS_ERR_UNKNOWN;
+    if (_fnblas_dtype_is_integer(dtype)) {
+        for (index = 0; index < input->_n_elements; ++index) {
+            if (isnan(fnblas_vector_numeric_value(input, index))) return FNBLAS_ERR_MISMATCH;
+        }
+    }
+    error = fnblas_prepare_mixed_vector(result, input, dtype);
+    if (error != FNBLAS_SUCCESS) return error;
+    for (index = 0; index < input->_n_elements; ++index) fnblas_vector_set_numeric_value(result, index, fnblas_vector_numeric_value(input, index));
+    return FNBLAS_SUCCESS;
+}
+
+fnblas_error_t fnblas_op_vq_quant_per_tensor(fnblas_vector_t* result, const fnblas_vector_t* input, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t qdtype)
+{
+    fnblas_error_t error;
+    const int is_fp4 = qdtype == FP4;
+    const int is_integer = qdtype == INT8 || qdtype == INT4;
+    double scale_value;
+    double zero_point_value;
+    size_t index;
+    if (scale == NULL || zero_point == NULL || !_fnblas_dtype_is_float(scale->_dtype)) return FNBLAS_ERR_MISMATCH;
+    if ((is_fp4 && !(_fnblas_dtype_is_float(input->_dtype) && (input->_dtype == FP32 || input->_dtype == FP16 || input->_dtype == BF16) && _fnblas_dtype_is_float(zero_point->_dtype))) ||
+        (is_integer && !((input->_dtype == FP32 || input->_dtype == BF16) && _fnblas_dtype_is_integer(zero_point->_dtype))) ||
+        (!is_fp4 && !is_integer)) return FNBLAS_ERR_MISMATCH;
+    scale_value = (double)fnblas_scalar_as_unpacked_float(scale);
+    zero_point_value = _fnblas_dtype_is_float(zero_point->_dtype)
+        ? (double)fnblas_scalar_as_unpacked_float(zero_point)
+        : (double)fnblas_scalar_as_unpacked_int32(zero_point);
+    if (!isfinite(scale_value) || scale_value <= 0.0 || !isfinite(zero_point_value)) return FNBLAS_ERR_MISMATCH;
+    for (index = 0; index < input->_n_elements; ++index) {
+        if (isnan(fnblas_vector_numeric_value(input, index))) return FNBLAS_ERR_MISMATCH;
+    }
+    error = fnblas_prepare_mixed_vector(result, input, qdtype);
+    if (error != FNBLAS_SUCCESS) return error;
+    for (index = 0; index < input->_n_elements; ++index) {
+        const double input_value = fnblas_vector_numeric_value(input, index);
+        const double transformed = input_value / scale_value + zero_point_value;
+        if (is_fp4) {
+            const byte_t bits = _fnblas_fp32_to_fp4_bits((float)transformed);
+            ((float*)result->_buffer)[index] = _fnblas_fp4_bits_to_fp32(bits);
+        } else {
+            fnblas_vector_set_numeric_value(result, index, transformed);
+        }
+    }
+    return FNBLAS_SUCCESS;
+}
+
+fnblas_error_t fnblas_op_vq_dequant_per_tensor(fnblas_vector_t* result, const fnblas_vector_t* input, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t dtype)
+{
+    fnblas_error_t error;
+    const int is_fp4 = input != NULL && input->_dtype == FP4;
+    const int is_integer = input != NULL && (input->_dtype == INT8 || input->_dtype == INT4);
+    double scale_value;
+    double zero_point_value;
+    size_t index;
+    if (input == NULL || scale == NULL || zero_point == NULL || !_fnblas_dtype_is_float(scale->_dtype) || !(dtype == FP32 || dtype == FP16 || dtype == BF16)) return FNBLAS_ERR_MISMATCH;
+    if ((is_fp4 && !_fnblas_dtype_is_float(zero_point->_dtype)) || (is_integer && !_fnblas_dtype_is_integer(zero_point->_dtype)) || (!is_fp4 && !is_integer)) return FNBLAS_ERR_MISMATCH;
+    scale_value = (double)fnblas_scalar_as_unpacked_float(scale);
+    zero_point_value = _fnblas_dtype_is_float(zero_point->_dtype)
+        ? (double)fnblas_scalar_as_unpacked_float(zero_point)
+        : (double)fnblas_scalar_as_unpacked_int32(zero_point);
+    if (!isfinite(scale_value) || scale_value <= 0.0 || !isfinite(zero_point_value)) return FNBLAS_ERR_MISMATCH;
+    for (index = 0; index < input->_n_elements; ++index) {
+        if (isnan(fnblas_vector_numeric_value(input, index))) return FNBLAS_ERR_MISMATCH;
+    }
+    error = fnblas_prepare_mixed_vector(result, input, dtype);
+    if (error != FNBLAS_SUCCESS) return error;
+    for (index = 0; index < input->_n_elements; ++index) {
+        const double dequantized = (fnblas_vector_numeric_value(input, index) - zero_point_value) * scale_value;
+        ((float*)result->_buffer)[index] = (float)dequantized;
+    }
     return FNBLAS_SUCCESS;
 }

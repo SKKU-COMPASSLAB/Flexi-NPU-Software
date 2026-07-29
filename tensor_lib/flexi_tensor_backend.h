@@ -40,6 +40,13 @@ typedef struct {
     // operator vector-individual
     flexi_tensor_error_t (*op_vi_exp)(fnblas_vector_t*, const fnblas_vector_t*);
 
+    // operator vector-cast
+    flexi_tensor_error_t (*op_vc_cast)(fnblas_vector_t*, const fnblas_vector_t*, fnblas_dtype_t);
+
+    // operator vector-quantization
+    flexi_tensor_error_t (*op_vq_quant_per_tensor)(fnblas_vector_t*, const fnblas_vector_t*, const fnblas_scalar_t*, const fnblas_scalar_t*, fnblas_dtype_t);
+    flexi_tensor_error_t (*op_vq_dequant_per_tensor)(fnblas_vector_t*, const fnblas_vector_t*, const fnblas_scalar_t*, const fnblas_scalar_t*, fnblas_dtype_t);
+
     // operator matrix-individual
     flexi_tensor_error_t (*op_mi_transpose)(fnblas_matrix_t*, const fnblas_matrix_t*);
 

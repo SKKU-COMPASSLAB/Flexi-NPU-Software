@@ -448,7 +448,7 @@ static flexi_tensor_error_t flexi_tensor_op_pool2d(flexi_tensor_t* out, const fl
     if (element_size == 0 || channels > SIZE_MAX / element_size) return FLEXI_TENSOR_ERR_MISMATCH;
     if (reduction == FLEXI_TENSOR_POOL_REDUCE_MAX && max_kernel == NULL) return FLEXI_TENSOR_ERR_UNSUPPORTED;
     if (reduction == FLEXI_TENSOR_POOL_REDUCE_AVG && (add_kernel == NULL || div_kernel == NULL)) return FLEXI_TENSOR_ERR_UNSUPPORTED;
-    if (reduction == FLEXI_TENSOR_POOL_REDUCE_AVG && x->_dtype == INT8 && window_area > UINT8_MAX) return FLEXI_TENSOR_ERR_MISMATCH;
+    if (reduction == FLEXI_TENSOR_POOL_REDUCE_AVG && x->_dtype == INT8 && window_area > INT8_MAX) return FLEXI_TENSOR_ERR_MISMATCH;
     if (reduction == FLEXI_TENSOR_POOL_REDUCE_AVG && !_fnblas_dtype_is_float(x->_dtype) && x->_dtype != INT8 && window_area > INT32_MAX) return FLEXI_TENSOR_ERR_MISMATCH;
     out_shape = FLEXI_TUPLE(n_batches, output_height, output_width, channels);
 
@@ -483,7 +483,7 @@ static flexi_tensor_error_t flexi_tensor_op_pool2d(flexi_tensor_t* out, const fl
             float* divisor = (float*)divisor_vector._buffer;
             for (channel = 0; channel < channels; ++channel) divisor[channel] = (float)window_area;
         } else if (x->_dtype == INT8) {
-            memset(divisor_vector._buffer, (uint8_t)window_area, channels);
+            memset(divisor_vector._buffer, (int8_t)window_area, channels);
         } else {
             int32_t* divisor = (int32_t*)divisor_vector._buffer;
             for (channel = 0; channel < channels; ++channel) divisor[channel] = (int32_t)window_area;
@@ -695,4 +695,70 @@ _flexi_tensor_op_softmax_cleanup:
     fnblas_matrix_destroy(&x_matrix);
     if (error != FLEXI_TENSOR_SUCCESS && out_created) flexi_tensor_destroy(out);
     return error;
+}
+
+static flexi_tensor_error_t flexi_tensor_op_quantization(flexi_tensor_t* out, const flexi_tensor_t* x, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t out_dtype, int dequantize)
+{
+    _flexi_tensor_backend_kernel_op_vq kernel = dequantize
+        ? FLEXI_TENSOR_BACKEND_KERNEL_GET(_flexi_tensor_backend_kernel_op_vq_dequant_per_tensor)
+        : FLEXI_TENSOR_BACKEND_KERNEL_GET(_flexi_tensor_backend_kernel_op_vq_quant_per_tensor);
+    fnblas_vector_t out_vector = FNBLAS_VECTOR_INITIALIZER;
+    fnblas_vector_t x_vector = FNBLAS_VECTOR_INITIALIZER;
+    flexi_tuple_t out_shape = FLEXI_TUPLE_EMPTY;
+    flexi_tensor_error_t error;
+    fnblas_error_t blas_error;
+    size_t n_elements = 1;
+    size_t dimension;
+    int out_created = 0;
+    if (out == NULL || x == NULL || out == x || scale == NULL || zero_point == NULL) return FLEXI_TENSOR_ERR_UNKNOWN;
+    if (kernel == NULL) return FLEXI_TENSOR_ERR_UNSUPPORTED;
+    if (x->_n_dims == 0 || x->_n_dims > 4 || x->_shape == NULL || x->_strides == NULL || !_fnblas_dtype_is_valid(x->_dtype) || !_fnblas_dtype_is_valid(out_dtype)) return FLEXI_TENSOR_ERR_MISMATCH;
+    for (dimension = 0; dimension < x->_n_dims; ++dimension) {
+        if (x->_shape[dimension] != 0 && n_elements > SIZE_MAX / x->_shape[dimension]) return FLEXI_TENSOR_ERR_MISMATCH;
+        n_elements *= x->_shape[dimension];
+    }
+    if (n_elements != 0 && x->_buffer == NULL) return FLEXI_TENSOR_ERR_MISMATCH;
+    if (flexi_tensor_op_is_initialized(out)) {
+        if (out->_n_dims != x->_n_dims || out->_dtype != out_dtype || out->_shape == NULL || out->_strides == NULL) return FLEXI_TENSOR_ERR_MISMATCH;
+        for (dimension = 0; dimension < x->_n_dims; ++dimension) {
+            if (out->_shape[dimension] != x->_shape[dimension]) return FLEXI_TENSOR_ERR_MISMATCH;
+        }
+    } else {
+        out_created = 1;
+        out_shape._n_dims = x->_n_dims;
+        for (dimension = 0; dimension < x->_n_dims; ++dimension) out_shape._values[dimension] = x->_shape[dimension];
+        error = flexi_tensor_create(out, out_shape, out_dtype);
+        if (error != FLEXI_TENSOR_SUCCESS) return error;
+    }
+    if (out->_buffer == x->_buffer && n_elements != 0) {
+        error = FLEXI_TENSOR_ERR_MISMATCH;
+        goto _flexi_tensor_op_quantization_cleanup;
+    }
+    if (n_elements == 0) {
+        error = FLEXI_TENSOR_SUCCESS;
+        goto _flexi_tensor_op_quantization_cleanup;
+    }
+    blas_error = fnblas_vector_create_view(&x_vector, (byte_t*)x->_buffer, n_elements, x->_dtype);
+    if (blas_error == FNBLAS_SUCCESS) blas_error = fnblas_vector_create_view(&out_vector, out->_buffer, n_elements, out->_dtype);
+    if (blas_error != FNBLAS_SUCCESS) {
+        error = flexi_tensor_op_from_fnblas_error(blas_error);
+        goto _flexi_tensor_op_quantization_cleanup;
+    }
+    error = kernel(&out_vector, &x_vector, scale, zero_point, out_dtype);
+
+_flexi_tensor_op_quantization_cleanup:
+    fnblas_vector_destroy(&out_vector);
+    fnblas_vector_destroy(&x_vector);
+    if (error != FLEXI_TENSOR_SUCCESS && out_created) flexi_tensor_destroy(out);
+    return error;
+}
+
+flexi_tensor_error_t flexi_tensor_op_quant_per_tensor(flexi_tensor_t* out, const flexi_tensor_t* x, const fnblas_scalar_t scale, const fnblas_scalar_t zero_point, const fnblas_dtype_t out_dtype)
+{
+    return flexi_tensor_op_quantization(out, x, &scale, &zero_point, out_dtype, 0);
+}
+
+flexi_tensor_error_t flexi_tensor_op_dequant_per_tensor(flexi_tensor_t* out, const flexi_tensor_t* x, const fnblas_scalar_t scale, const fnblas_scalar_t zero_point, const fnblas_dtype_t out_dtype)
+{
+    return flexi_tensor_op_quantization(out, x, &scale, &zero_point, out_dtype, 1);
 }

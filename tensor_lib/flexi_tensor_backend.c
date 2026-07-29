@@ -91,6 +91,18 @@ static flexi_tensor_error_t fnblas_backend_op_vi_exp(fnblas_vector_t* result, co
     return flexi_tensor_from_fnblas_error(fnblas_op_vi_exp(result, input));
 }
 
+static flexi_tensor_error_t fnblas_backend_op_vc_cast(fnblas_vector_t* result, const fnblas_vector_t* input, fnblas_dtype_t dtype) {
+    return flexi_tensor_from_fnblas_error(fnblas_op_vc_cast(result, input, dtype));
+}
+
+static flexi_tensor_error_t fnblas_backend_op_vq_quant_per_tensor(fnblas_vector_t* result, const fnblas_vector_t* input, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t qdtype) {
+    return flexi_tensor_from_fnblas_error(fnblas_op_vq_quant_per_tensor(result, input, scale, zero_point, qdtype));
+}
+
+static flexi_tensor_error_t fnblas_backend_op_vq_dequant_per_tensor(fnblas_vector_t* result, const fnblas_vector_t* input, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t dtype) {
+    return flexi_tensor_from_fnblas_error(fnblas_op_vq_dequant_per_tensor(result, input, scale, zero_point, dtype));
+}
+
 static flexi_tensor_error_t fnblas_backend_op_mi_transpose(fnblas_matrix_t* result, const fnblas_matrix_t* input) {
     return flexi_tensor_from_fnblas_error(fnblas_op_mi_transpose(result, input));
 }
@@ -142,6 +154,9 @@ static flexi_tensor_error_t fnblas_backend_op_mmm_axpy(fnblas_matrix_t* result, 
     .op_vr_max = fnblas_backend_op_vr_max, \
     .op_vr_min = fnblas_backend_op_vr_min, \
     .op_vi_exp = fnblas_backend_op_vi_exp, \
+    .op_vc_cast = fnblas_backend_op_vc_cast, \
+    .op_vq_quant_per_tensor = fnblas_backend_op_vq_quant_per_tensor, \
+    .op_vq_dequant_per_tensor = fnblas_backend_op_vq_dequant_per_tensor, \
     .op_mi_transpose = fnblas_backend_op_mi_transpose, \
     .op_me_add = fnblas_backend_op_me_add, \
     .op_me_sub = fnblas_backend_op_me_sub, \
@@ -180,6 +195,9 @@ flexi_tensor_error_t flexi_tensor_use_backend(const flexi_tensor_backend_t* back
     if (backend->op_vr_max != NULL) _flexi_tensor_current_backend.op_vr_max = backend->op_vr_max;
     if (backend->op_vr_min != NULL) _flexi_tensor_current_backend.op_vr_min = backend->op_vr_min;
     if (backend->op_vi_exp != NULL) _flexi_tensor_current_backend.op_vi_exp = backend->op_vi_exp;
+    if (backend->op_vc_cast != NULL) _flexi_tensor_current_backend.op_vc_cast = backend->op_vc_cast;
+    if (backend->op_vq_quant_per_tensor != NULL) _flexi_tensor_current_backend.op_vq_quant_per_tensor = backend->op_vq_quant_per_tensor;
+    if (backend->op_vq_dequant_per_tensor != NULL) _flexi_tensor_current_backend.op_vq_dequant_per_tensor = backend->op_vq_dequant_per_tensor;
     if (backend->op_mi_transpose != NULL) _flexi_tensor_current_backend.op_mi_transpose = backend->op_mi_transpose;
     if (backend->op_me_add != NULL) _flexi_tensor_current_backend.op_me_add = backend->op_me_add;
     if (backend->op_me_sub != NULL) _flexi_tensor_current_backend.op_me_sub = backend->op_me_sub;

@@ -51,6 +51,12 @@ fnblas_error_t  fnblas_op_vr_min(fnblas_scalar_t* result, const fnblas_vector_t*
 // Operators: Vector-Individual (VI)
 fnblas_error_t  fnblas_op_vi_exp(fnblas_vector_t* result, const fnblas_vector_t* input);  // elementwise exponential of the vector
 
+// Operators: Vector-Cast (VC)
+fnblas_error_t  fnblas_op_vc_cast(fnblas_vector_t* result, const fnblas_vector_t* input, fnblas_dtype_t dtype);
+
+// Operators: Vector-Quantization (VQ)
+fnblas_error_t  fnblas_op_vq_quant_per_tensor(fnblas_vector_t* result, const fnblas_vector_t* input, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t qdtype);
+fnblas_error_t  fnblas_op_vq_dequant_per_tensor(fnblas_vector_t* result, const fnblas_vector_t* input, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t dtype);
 
 #ifdef __cplusplus
 }

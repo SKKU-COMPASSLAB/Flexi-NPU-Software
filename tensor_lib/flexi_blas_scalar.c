@@ -4,6 +4,35 @@
 #include <math.h>
 #include <string.h>
 
+static int32_t fnblas_clamp_integer(double value, fnblas_dtype_t dtype)
+{
+    double minimum;
+    double maximum;
+    if (isnan(value)) {
+        errno = EDOM;
+        return 0;
+    }
+    if (dtype == INT4) {
+        minimum = -8.0;
+        maximum = 7.0;
+    } else if (dtype == INT8) {
+        minimum = (double)INT8_MIN;
+        maximum = (double)INT8_MAX;
+    } else {
+        minimum = (double)INT32_MIN;
+        maximum = (double)INT32_MAX;
+    }
+    if (value < minimum) {
+        errno = ERANGE;
+        return (int32_t)minimum;
+    }
+    if (value > maximum) {
+        errno = ERANGE;
+        return (int32_t)maximum;
+    }
+    return (int32_t)value;
+}
+
 fnblas_error_t fnblas_scalar_create_from_dtype(
     fnblas_scalar_t* scalar, fnblas_dtype_t dtype)
 {
@@ -35,8 +64,9 @@ fnblas_error_t fnblas_scalar_create_int(
         return FNBLAS_ERR_UNKNOWN;
     if (!_fnblas_dtype_is_integer(dtype))
         return FNBLAS_ERR_MISMATCH;
+    value = fnblas_clamp_integer((double)value, dtype);
     if (dtype == INT8)
-        scalar->_value.u8 = (uint8_t)value;
+        scalar->_value.i8 = (int8_t)value;
     else
         scalar->_value.i32 = value;
     scalar->_dtype = dtype;
@@ -59,7 +89,7 @@ int32_t fnblas_scalar_as_unpacked_int32(const fnblas_scalar_t* scalar)
         return 0;
     }
     return scalar->_dtype == INT8
-        ? (int32_t)scalar->_value.u8
+        ? (int32_t)scalar->_value.i8
         : scalar->_value.i32;
 }
 
@@ -80,17 +110,12 @@ fnblas_scalar_t fnblas_scalar_cast_to(const fnblas_scalar_t* scalar, fnblas_dtyp
         : (double)fnblas_scalar_as_unpacked_int32(scalar);
     if (_fnblas_dtype_is_float(new_dtype)) {
         result._value.f32 = (float)value;
-    } else if (!isfinite(value) ||
-               value < (double)INT32_MIN ||
-               value > (double)INT32_MAX) {
-        errno = ERANGE;
-    } else if (new_dtype == INT8) {
-        if (value < 0.0 || value > (double)UINT8_MAX)
-            errno = ERANGE;
-        else
-            result._value.u8 = (uint8_t)value;
     } else {
-        result._value.i32 = (int32_t)value;
+        const int32_t integer = fnblas_clamp_integer(round(value), new_dtype);
+        if (new_dtype == INT8)
+            result._value.i8 = (int8_t)integer;
+        else
+            result._value.i32 = integer;
     }
     return result;
 }
@@ -125,7 +150,7 @@ static fnblas_error_t fnblas_scalar_operation(
     if (lhs->_dtype != rhs->_dtype)
         return FNBLAS_ERR_MISMATCH;
     if (operation == DIVIDE && !_fnblas_dtype_is_float(lhs->_dtype) &&
-        ((lhs->_dtype == INT8 && rhs->_value.u8 == 0) ||
+        ((lhs->_dtype == INT8 && rhs->_value.i8 == 0) ||
          (lhs->_dtype != INT8 && rhs->_value.i32 == 0)))
         return FNBLAS_ERR_UNKNOWN;
     error = fnblas_scalar_create_from_dtype(result, lhs->_dtype);
@@ -136,13 +161,15 @@ static fnblas_error_t fnblas_scalar_operation(
             lhs->_value.f32, rhs->_value.f32, operation
         );
     } else if (lhs->_dtype == INT8) {
-        result->_value.u8 = _fnblas_uint8_arithmetic(
-            lhs->_value.u8, rhs->_value.u8, operation
+        result->_value.i8 = _fnblas_int8_arithmetic(
+            lhs->_value.i8, rhs->_value.i8, operation
         );
     } else {
         result->_value.i32 = _fnblas_int32_arithmetic(
             lhs->_value.i32, rhs->_value.i32, operation
         );
+        if (lhs->_dtype == INT4)
+            result->_value.i32 = fnblas_clamp_integer((double)result->_value.i32, INT4);
     }
     return FNBLAS_SUCCESS;
 }

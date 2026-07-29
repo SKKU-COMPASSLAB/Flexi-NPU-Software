@@ -29,8 +29,8 @@ byte_t _fnblas_int32_to_int4_bits(int32_t value);
 int32_t _fnblas_int32_arithmetic(
     int32_t lhs, int32_t rhs, fnblas_arithmetic_op_t op
 );
-uint8_t _fnblas_uint8_arithmetic(
-    uint8_t lhs, uint8_t rhs, fnblas_arithmetic_op_t op
+int8_t _fnblas_int8_arithmetic(
+    int8_t lhs, int8_t rhs, fnblas_arithmetic_op_t op
 );
 float _fnblas_float_arithmetic(
     float lhs, float rhs, fnblas_arithmetic_op_t op

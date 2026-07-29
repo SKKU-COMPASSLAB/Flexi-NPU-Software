@@ -80,7 +80,7 @@ typedef struct {
     union {
         float f32;
         int32_t i32;
-        uint8_t u8;
+        int8_t i8;
         uint16_t u16;
     } _value;
     fnblas_dtype_t _dtype;
