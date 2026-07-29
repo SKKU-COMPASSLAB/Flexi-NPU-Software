@@ -14,7 +14,6 @@ SPIKE := $(RISCV_BIN)/spike
 
 include tensor_lib/Makefile
 include sim/Makefile
-include sw/Makefile
 include test/Makefile
 
 .PHONY: default check-riscv install clean
