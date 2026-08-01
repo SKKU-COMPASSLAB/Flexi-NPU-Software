@@ -35,7 +35,7 @@ RISC-V GNU toolchain과 Spike ISS가 정상설치 되어있어야 하며, `RISCV
 
 > 해당 레포지토리를 통해 생성된 RISC-V ELF는 `chipyard`를 통해 생성된 RTL 코드를 `verilator` 및 `firesim`을 활용하여 시뮬레이션할 때 활용될 수 있다. 하지만, 이 경우에도 가급적이면 `chipyard`에 내장된 RISC-V GNU 툴체인을 사용하지 않는 것을 권장한다. 소규모의 테스트를 통해 `chipyard v1.13.0` 기준으로 최신버전의 툴체인을 사용해도 실행에 문제가 없음을 확인하였다.
 
-필요 요구 사항을 설치 후 `env.sh`를 실행하여 환경이 설정되었는지 확인한다.
+필요 요구 사항을 설치 후 `env.sh`를 실행하여 `RISCV`를 PATH에 등록하고, 필요한 툴체인이 전부 설치되었는지를 확인한다.
 
 ```bash
 source env.sh
