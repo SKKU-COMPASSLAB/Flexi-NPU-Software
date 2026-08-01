@@ -51,16 +51,15 @@ SECTIONS
   .tdata :
   {
     _tdata_begin = .;
-    *(.tdata)
+    *(.tdata .tdata.*)
     _tdata_end = .;
   }
   .tbss :
   {
-    *(.tbss)
+    *(.tbss .tbss.*)
     _tbss_end = .;
   }
 
   /* End of uninitalized data segement */
   _end = .;
 }
-

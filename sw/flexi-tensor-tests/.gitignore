@@ -1,2 +1,3 @@
 bin
 build
+tests/e1_simple_mlp_dump

@@ -31,7 +31,8 @@ typedef enum {
     FP4 = 1,
     INT4 = 3,
     FP8 = 5,
-    BF16 = 7
+    BF16 = 7,
+    BYTE = 9
 } fnblas_dtype_t;
 
 typedef enum {

@@ -80,6 +80,22 @@ int main()
         require_close(at(&product, 1, 0), 122.0f, "matrix matmul");
         require_close(at(&product, 1, 1), 167.0f, "matrix matmul");
 
+        fnblas_matrix_t mixed_product = FNBLAS_MATRIX_INITIALIZER;
+        fnblas_matrix_create(&mixed_product, 2, 2, BF16);
+        if (fnblas_op_mm_matmul(&mixed_product, &lhs, &rhs_t) != FNBLAS_SUCCESS || mixed_product._dtype != BF16)
+            throw std::runtime_error("matrix matmul must preserve explicit floating-point output dtype");
+        require_close(at(&mixed_product, 1, 1), 167.0f, "mixed dtype matrix matmul");
+
+        fnblas_matrix_t integer_product = FNBLAS_MATRIX_INITIALIZER;
+        fnblas_matrix_create(&integer_product, 2, 2, INT32);
+        if (fnblas_op_mm_matmul(&integer_product, &lhs, &rhs_t) != FNBLAS_ERR_MISMATCH)
+            throw std::runtime_error("matrix matmul must reject FP-to-INT output mismatch");
+
+        fnblas_matrix_t mixed_elementwise = FNBLAS_MATRIX_INITIALIZER;
+        fnblas_matrix_create(&mixed_elementwise, 2, 3, BF16);
+        if (fnblas_op_me_add(&mixed_elementwise, &lhs, &rhs) != FNBLAS_ERR_MISMATCH)
+            throw std::runtime_error("matrix elementwise operation must require matching output dtype");
+
         std::vector<byte_t> packed(6 * sizeof(float));
         fnblas_matrix_get_packed_buffer(&lhs, packed.data());
         fnblas_matrix_t restored = FNBLAS_MATRIX_INITIALIZER;
@@ -96,6 +112,9 @@ int main()
         fnblas_matrix_destroy(&transpose);
         fnblas_matrix_destroy(&rhs_t);
         fnblas_matrix_destroy(&product);
+        fnblas_matrix_destroy(&mixed_product);
+        fnblas_matrix_destroy(&integer_product);
+        fnblas_matrix_destroy(&mixed_elementwise);
         fnblas_matrix_destroy(&restored);
         std::cout << "t4_blas_matrix_test: all tests passed\n";
         return 0;

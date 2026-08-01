@@ -2,6 +2,10 @@
 #include "flexi_npu_isa.h"
 #include "flexi_blas_internal.h"
 
+#if defined(__riscv_vector)
+#include <riscv_vector.h>
+#endif
+
 #include <string.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -10,8 +14,10 @@
 flexi_npu_context_t _flexi_npu_current_context = {0};
 
 const flexi_tensor_backend_t flexi_npu_backend = {
-    .op_mm_matmul = flexi_npu_op_mm_matmul
+    .op_mm_matmul = flexi_npu_op_mm_matmul,
+    .op_vq_quant_per_tensor = flexi_npu_op_rvv_vq_quant_per_tensor
 };
+
 
 static size_t flexi_npu_round_up(size_t value, size_t alignment) {
     if (alignment == 0 || value > SIZE_MAX - (alignment - 1)) return 0;
@@ -201,4 +207,117 @@ _flexi_npu_op_mm_matmul_cleanup:
     fnblas_matrix_destroy(&mat_a_shard);
     if (result != FLEXI_TENSOR_SUCCESS && output_created) fnblas_matrix_destroy(mat_d);
     return result;
+}
+
+
+#if defined(__riscv_vector)
+static const uint32_t e2m1_mid_bits_m1[7] = {
+    UINT32_C(0x3E800000), UINT32_C(0x3F3FFFFF), UINT32_C(0x3FA00000), UINT32_C(0x3FDFFFFF),
+    UINT32_C(0x40200000), UINT32_C(0x405FFFFF), UINT32_C(0x40A00000)
+};
+
+typedef union {
+    float f;
+    uint32_t u;
+} float_ui32;
+
+static inline float bf16_to_float(uint16_t bf){
+    float_ui32 fu;
+    fu.u = ((uint32_t)bf)<<16;
+
+    return fu.f;
+}
+
+static inline vfloat32m4_t fnvector_rvv_bf16_to_float_m2_m4(vuint16m2_t v_bf16, size_t vl) {
+
+    vuint32m4_t v_u32;
+    v_u32 = __riscv_vzext_vf2_u32m4(v_bf16, vl);
+    v_u32 = __riscv_vsll_vx_u32m4(v_u32, 16, vl);
+    return __riscv_vreinterpret_v_u32m4_f32m4(v_u32);
+}
+
+static inline vuint32m4_t fnvector_rvv_bucketize_fp4e2m1(vfloat32m4_t v_f32, size_t vl) {
+    vuint32m4_t bits = __riscv_vreinterpret_v_f32m4_u32m4(v_f32);
+    vuint32m4_t v_idx = __riscv_vmv_v_x_u32m4(0, vl); // Initialize with zeroes
+
+    for(int i = 0; i < 7; i++){
+        vuint32m4_t d = __riscv_vssubu_vx_u32m4(bits, e2m1_mid_bits_m1[i], vl);
+        d = __riscv_vminu_vx_u32m4(d, 1, vl);
+        v_idx = __riscv_vadd_vv_u32m4(v_idx, d, vl);
+    }
+
+    return v_idx;
+}
+
+void fnvector_quant_with_scale_bf16_to_fp4e2m1(uint16_t *out, uint16_t *in, uint16_t scale, int numel, int fence_rw_rw_before_touch){
+    if(fence_rw_rw_before_touch)
+        __asm__ volatile("fence rw, rw" ::: "memory");
+
+    int avl = numel;
+    uint16_t *p_in = (uint16_t *)in;
+    uint16_t *p_out = (uint16_t *)out;
+    float scale_f32 = bf16_to_float(scale);
+    while(avl > 0){
+        size_t vl = __riscv_vsetvl_e16m2((unsigned)avl);
+
+        vuint16m2_t v_in_bf16 = __riscv_vle16_v_u16m2(p_in, vl);
+        vfloat32m4_t v_in_f32 = fnvector_rvv_bf16_to_float_m2_m4(v_in_bf16, vl);
+        vfloat32m4_t v_scale = __riscv_vfdiv_vf_f32m4(v_in_f32, scale_f32, vl);
+        vuint32m4_t v_sign_bits = __riscv_vsrl_vx_u32m4(__riscv_vreinterpret_v_f32m4_u32m4(v_scale), 31, vl);
+        vfloat32m4_t v_abs = __riscv_vfabs_v_f32m4(v_scale, vl);
+        vfloat32m4_t v_clamped = __riscv_vfmin_vf_f32m4(v_abs, 6.0f, vl);
+        vuint32m4_t v_idx = fnvector_rvv_bucketize_fp4e2m1(v_clamped, vl);
+        vuint32m4_t v_combined = __riscv_vor_vv_u32m4(v_idx, __riscv_vsll_vx_u32m4(v_sign_bits, 3, vl), vl);
+        vuint16m2_t v_code16 = __riscv_vncvt_x_x_w_u16m2(v_combined, vl);
+        __riscv_vse16_v_u16m2(p_out, v_code16, vl);
+
+        p_in += vl; p_out += vl;
+        avl -= (int)vl;
+    }
+}
+
+#endif
+
+static flexi_tensor_error_t flexi_npu_from_fnblas_error(fnblas_error_t error) {
+    if (error == FNBLAS_SUCCESS) return FLEXI_TENSOR_SUCCESS;
+    if (error == FNBLAS_ERR_MALLOC_FAIL) return FLEXI_TENSOR_ERR_MALLOC_FAIL;
+    if (error == FNBLAS_ERR_MISMATCH) return FLEXI_TENSOR_ERR_MISMATCH;
+    return FLEXI_TENSOR_ERR_BACKEND;
+}
+
+flexi_tensor_error_t flexi_npu_op_rvv_vq_quant_per_tensor(fnblas_vector_t* result, const fnblas_vector_t* input, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t qdtype) {
+#if defined(__riscv_vector)
+    byte_t* packed_input = NULL;
+    uint16_t* fp4_codes = NULL;
+    fnblas_error_t blas_error;
+    size_t packed_input_size;
+    size_t index;
+    uint16_t scale_bf16;
+
+    if (result == NULL || input == NULL || scale == NULL || zero_point == NULL) return FLEXI_TENSOR_ERR_MISMATCH;
+    if (input->_dtype != BF16 || qdtype != FP4 || zero_point->_dtype != BF16 || fnblas_scalar_as_unpacked_float(zero_point) != 0.0f) {
+        return flexi_npu_from_fnblas_error(fnblas_op_vq_quant_per_tensor(result, input, scale, zero_point, qdtype));
+    }
+    if (scale->_dtype != BF16 || result->_dtype != FP4 || result->_n_elements != input->_n_elements || (input->_n_elements != 0 && (input->_buffer == NULL || result->_buffer == NULL))) return FLEXI_TENSOR_ERR_MISMATCH;
+    if (input->_n_elements > (size_t)INT32_MAX || input->_n_elements > SIZE_MAX / sizeof(*fp4_codes)) return FLEXI_TENSOR_ERR_MISMATCH;
+
+    packed_input_size = fnblas_vector_packed_size(input);
+    blas_error = _fnblas_allocate_buffer(&packed_input, packed_input_size, INT8);
+    if (blas_error != FNBLAS_SUCCESS) goto _flexi_npu_quant_cleanup;
+    blas_error = _fnblas_allocate_buffer((byte_t**)&fp4_codes, input->_n_elements * sizeof(*fp4_codes), INT8);
+    if (blas_error != FNBLAS_SUCCESS) goto _flexi_npu_quant_cleanup;
+    blas_error = fnblas_vector_get_packed_buffer(input, packed_input);
+    if (blas_error != FNBLAS_SUCCESS) goto _flexi_npu_quant_cleanup;
+
+    scale_bf16 = _fnblas_fp32_to_bf16_bits(fnblas_scalar_as_unpacked_float(scale));
+    fnvector_quant_with_scale_bf16_to_fp4e2m1(fp4_codes, (uint16_t*)packed_input, scale_bf16, (int)input->_n_elements, 1);
+    for (index = 0; index < input->_n_elements; ++index) ((float*)result->_buffer)[index] = _fnblas_fp4_bits_to_fp32((byte_t)fp4_codes[index]);
+
+_flexi_npu_quant_cleanup:
+    _fnblas_deallocate_buffer((byte_t*)fp4_codes);
+    _fnblas_deallocate_buffer(packed_input);
+    return flexi_npu_from_fnblas_error(blas_error);
+#else
+    return flexi_npu_from_fnblas_error(fnblas_op_vq_quant_per_tensor(result, input, scale, zero_point, qdtype));
+#endif
 }

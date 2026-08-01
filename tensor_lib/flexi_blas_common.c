@@ -36,6 +36,11 @@ int _fnblas_dtype_is_valid(fnblas_dtype_t dtype)
            _fnblas_dtype_is_integer(dtype);
 }
 
+int _fnblas_dtype_is_same_family(fnblas_dtype_t lhs, fnblas_dtype_t rhs)
+{
+    return (_fnblas_dtype_is_float(lhs) && _fnblas_dtype_is_float(rhs)) || (_fnblas_dtype_is_integer(lhs) && _fnblas_dtype_is_integer(rhs));
+}
+
 size_t _fnblas_dtype_unpacked_size_of(fnblas_dtype_t dtype)
 {
     if (_fnblas_dtype_is_float(dtype))
@@ -67,6 +72,7 @@ size_t fnblas_dtype_size_of(fnblas_dtype_t dtype)
         case FP4:
         case INT4:
         case FP8:
+        case BYTE:
         case INT8:  return 1;
         case FP16:
         case BF16:  return 2;
@@ -83,6 +89,7 @@ size_t fnblas_dtype_pack_size_of(fnblas_dtype_t dtype)
     switch (dtype) {
         case FP4:
         case INT4: return 2;
+        case BYTE:
         case FP8:
         case INT8:
         case FP16:

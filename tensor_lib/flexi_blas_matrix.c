@@ -1,6 +1,7 @@
 #include "flexi_blas_internal.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -296,7 +297,8 @@ static fnblas_error_t fnblas_prepare_matrix_elementwise(
         lhs->_n_cols != rhs->_n_cols)
         return FNBLAS_ERR_MISMATCH;
     if (_fnblas_buffer_is_allocated(result->_status)) {
-        if (result->_n_rows != lhs->_n_rows ||
+        if (result->_dtype != lhs->_dtype ||
+            result->_n_rows != lhs->_n_rows ||
             result->_n_cols != lhs->_n_cols) {
             return FNBLAS_ERR_MISMATCH;
         }
@@ -399,7 +401,8 @@ fnblas_error_t fnblas_op_mm_matmul(
         lhs->_n_cols != rhs_t->_n_cols)
         return FNBLAS_ERR_MISMATCH;
     if (_fnblas_buffer_is_allocated(result->_status)) {
-        if (result->_n_rows != lhs->_n_rows ||
+        if (!_fnblas_dtype_is_same_family(result->_dtype, lhs->_dtype) ||
+            result->_n_rows != lhs->_n_rows ||
             result->_n_cols != rhs_t->_n_rows) {
             return FNBLAS_ERR_MISMATCH;
         }
@@ -428,40 +431,31 @@ fnblas_error_t fnblas_op_mm_matmul(
                 dst[row * rhs_t->_n_rows + col] = sum;
             }
         }
-    } else if (lhs->_dtype == INT8) {
-        int8_t* dst = (int8_t*)result->_buffer;
-        const int8_t* left = (const int8_t*)lhs->_buffer;
-        const int8_t* right = (const int8_t*)rhs_t->_buffer;
-        for (row = 0; row < lhs->_n_rows; ++row) {
-            for (col = 0; col < rhs_t->_n_rows; ++col) {
-                int8_t sum = 0;
-                for (reduction = 0;
-                     reduction < lhs->_n_cols;
-                     ++reduction) {
-                    const int8_t product = _fnblas_int8_arithmetic(left[row * lhs->_n_cols + reduction], right[col * rhs_t->_n_cols + reduction], MULTIPLY);
-                    sum = _fnblas_int8_arithmetic(sum, product, ADD);
-                }
-                dst[row * rhs_t->_n_rows + col] = sum;
-            }
-        }
     } else {
-        int32_t* dst = (int32_t*)result->_buffer;
-        const int32_t* left = (const int32_t*)lhs->_buffer;
-        const int32_t* right = (const int32_t*)rhs_t->_buffer;
         for (row = 0; row < lhs->_n_rows; ++row) {
             for (col = 0; col < rhs_t->_n_rows; ++col) {
-                int32_t sum = 0;
-                for (reduction = 0;
-                     reduction < lhs->_n_cols;
-                     ++reduction) {
-                    const int32_t product = _fnblas_int32_arithmetic(
-                        left[row * lhs->_n_cols + reduction],
-                        right[col * rhs_t->_n_cols + reduction],
-                        MULTIPLY
-                    );
-                    sum = _fnblas_int32_arithmetic(sum, product, ADD);
+                int64_t sum = 0;
+                for (reduction = 0; reduction < lhs->_n_cols; ++reduction) {
+                    const size_t lhs_index = row * lhs->_n_cols + reduction;
+                    const size_t rhs_index = col * rhs_t->_n_cols + reduction;
+                    const int64_t left = lhs->_dtype == INT8 ? ((const int8_t*)lhs->_buffer)[lhs_index] : ((const int32_t*)lhs->_buffer)[lhs_index];
+                    const int64_t right = rhs_t->_dtype == INT8 ? ((const int8_t*)rhs_t->_buffer)[rhs_index] : ((const int32_t*)rhs_t->_buffer)[rhs_index];
+                    const int64_t product = left * right;
+                    if (product > 0 && sum > INT64_MAX - product) sum = INT64_MAX;
+                    else if (product < 0 && sum < INT64_MIN - product) sum = INT64_MIN;
+                    else sum += product;
                 }
-                dst[row * rhs_t->_n_rows + col] = sum;
+                if (result->_dtype == INT8) {
+                    if (sum > INT8_MAX) sum = INT8_MAX;
+                    if (sum < INT8_MIN) sum = INT8_MIN;
+                    ((int8_t*)result->_buffer)[row * rhs_t->_n_rows + col] = (int8_t)sum;
+                } else {
+                    const int64_t minimum = result->_dtype == INT4 ? -8 : INT32_MIN;
+                    const int64_t maximum = result->_dtype == INT4 ? 7 : INT32_MAX;
+                    if (sum > maximum) sum = maximum;
+                    if (sum < minimum) sum = minimum;
+                    ((int32_t*)result->_buffer)[row * rhs_t->_n_rows + col] = (int32_t)sum;
+                }
             }
         }
     }
@@ -478,7 +472,7 @@ fnblas_error_t fnblas_op_mmv_axpy(fnblas_matrix_t* result, const fnblas_matrix_t
     if (a->_dtype != x_t->_dtype || a->_dtype != y->_dtype || a->_n_cols != x_t->_n_cols || y->_n_elements != x_t->_n_rows) return FNBLAS_ERR_MISMATCH;
     if (result == a || result == x_t || result->_buffer == y->_buffer) return FNBLAS_ERR_UNKNOWN;
     if (_fnblas_buffer_is_allocated(result->_status)) {
-        if (result->_dtype != a->_dtype || result->_n_rows != a->_n_rows || result->_n_cols != x_t->_n_rows) return FNBLAS_ERR_MISMATCH;
+        if (!_fnblas_dtype_is_same_family(result->_dtype, a->_dtype) || result->_n_rows != a->_n_rows || result->_n_cols != x_t->_n_rows) return FNBLAS_ERR_MISMATCH;
     } else {
         error = fnblas_matrix_create(result, a->_n_rows, x_t->_n_rows, a->_dtype);
         if (error != FNBLAS_SUCCESS) return error;
@@ -495,34 +489,17 @@ fnblas_error_t fnblas_op_mmv_axpy(fnblas_matrix_t* result, const fnblas_matrix_t
                 dst[row * x_t->_n_rows + col] = sum + addend[col];
             }
         }
-    } else if (a->_dtype == INT8) {
-        int8_t* dst = (int8_t*)result->_buffer;
-        const int8_t* left = (const int8_t*)a->_buffer;
-        const int8_t* right = (const int8_t*)x_t->_buffer;
-        const int8_t* addend = (const int8_t*)y->_buffer;
-        for (row = 0; row < a->_n_rows; ++row) {
-            for (col = 0; col < x_t->_n_rows; ++col) {
-                int8_t sum = 0;
-                for (reduction = 0; reduction < a->_n_cols; ++reduction) {
-                    const int8_t product = _fnblas_int8_arithmetic(left[row * a->_n_cols + reduction], right[col * x_t->_n_cols + reduction], MULTIPLY);
-                    sum = _fnblas_int8_arithmetic(sum, product, ADD);
-                }
-                dst[row * x_t->_n_rows + col] = _fnblas_int8_arithmetic(sum, addend[col], ADD);
-            }
-        }
     } else {
-        int32_t* dst = (int32_t*)result->_buffer;
-        const int32_t* left = (const int32_t*)a->_buffer;
-        const int32_t* right = (const int32_t*)x_t->_buffer;
-        const int32_t* addend = (const int32_t*)y->_buffer;
         for (row = 0; row < a->_n_rows; ++row) {
             for (col = 0; col < x_t->_n_rows; ++col) {
-                int32_t sum = 0;
+                int64_t sum = y->_dtype == INT8 ? ((const int8_t*)y->_buffer)[col] : ((const int32_t*)y->_buffer)[col];
                 for (reduction = 0; reduction < a->_n_cols; ++reduction) {
-                    const int32_t product = _fnblas_int32_arithmetic(left[row * a->_n_cols + reduction], right[col * x_t->_n_cols + reduction], MULTIPLY);
-                    sum = _fnblas_int32_arithmetic(sum, product, ADD);
+                    const int64_t left = a->_dtype == INT8 ? ((const int8_t*)a->_buffer)[row * a->_n_cols + reduction] : ((const int32_t*)a->_buffer)[row * a->_n_cols + reduction];
+                    const int64_t right = x_t->_dtype == INT8 ? ((const int8_t*)x_t->_buffer)[col * x_t->_n_cols + reduction] : ((const int32_t*)x_t->_buffer)[col * x_t->_n_cols + reduction];
+                    sum += left * right;
                 }
-                dst[row * x_t->_n_rows + col] = _fnblas_int32_arithmetic(sum, addend[col], ADD);
+                if (result->_dtype == INT8) ((int8_t*)result->_buffer)[row * x_t->_n_rows + col] = (int8_t)(sum > INT8_MAX ? INT8_MAX : sum < INT8_MIN ? INT8_MIN : sum);
+                else ((int32_t*)result->_buffer)[row * x_t->_n_rows + col] = (int32_t)(sum > (result->_dtype == INT4 ? 7 : INT32_MAX) ? (result->_dtype == INT4 ? 7 : INT32_MAX) : sum < (result->_dtype == INT4 ? -8 : INT32_MIN) ? (result->_dtype == INT4 ? -8 : INT32_MIN) : sum);
             }
         }
     }
@@ -539,7 +516,7 @@ fnblas_error_t fnblas_op_mmm_axpy(fnblas_matrix_t* result, const fnblas_matrix_t
     if (a->_dtype != x_t->_dtype || a->_dtype != y->_dtype || a->_n_cols != x_t->_n_cols || y->_n_rows != a->_n_rows || y->_n_cols != x_t->_n_rows) return FNBLAS_ERR_MISMATCH;
     if (result == a || result == x_t || result == y) return FNBLAS_ERR_UNKNOWN;
     if (_fnblas_buffer_is_allocated(result->_status)) {
-        if (result->_dtype != a->_dtype || result->_n_rows != a->_n_rows || result->_n_cols != x_t->_n_rows) return FNBLAS_ERR_MISMATCH;
+        if (!_fnblas_dtype_is_same_family(result->_dtype, a->_dtype) || result->_n_rows != a->_n_rows || result->_n_cols != x_t->_n_rows) return FNBLAS_ERR_MISMATCH;
     } else {
         error = fnblas_matrix_create(result, a->_n_rows, x_t->_n_rows, a->_dtype);
         if (error != FNBLAS_SUCCESS) return error;
@@ -556,34 +533,18 @@ fnblas_error_t fnblas_op_mmm_axpy(fnblas_matrix_t* result, const fnblas_matrix_t
                 dst[row * x_t->_n_rows + col] = sum + addend[row * y->_n_cols + col];
             }
         }
-    } else if (a->_dtype == INT8) {
-        int8_t* dst = (int8_t*)result->_buffer;
-        const int8_t* left = (const int8_t*)a->_buffer;
-        const int8_t* right = (const int8_t*)x_t->_buffer;
-        const int8_t* addend = (const int8_t*)y->_buffer;
-        for (row = 0; row < a->_n_rows; ++row) {
-            for (col = 0; col < x_t->_n_rows; ++col) {
-                int8_t sum = 0;
-                for (reduction = 0; reduction < a->_n_cols; ++reduction) {
-                    const int8_t product = _fnblas_int8_arithmetic(left[row * a->_n_cols + reduction], right[col * x_t->_n_cols + reduction], MULTIPLY);
-                    sum = _fnblas_int8_arithmetic(sum, product, ADD);
-                }
-                dst[row * x_t->_n_rows + col] = _fnblas_int8_arithmetic(sum, addend[row * y->_n_cols + col], ADD);
-            }
-        }
     } else {
-        int32_t* dst = (int32_t*)result->_buffer;
-        const int32_t* left = (const int32_t*)a->_buffer;
-        const int32_t* right = (const int32_t*)x_t->_buffer;
-        const int32_t* addend = (const int32_t*)y->_buffer;
         for (row = 0; row < a->_n_rows; ++row) {
             for (col = 0; col < x_t->_n_rows; ++col) {
-                int32_t sum = 0;
+                const size_t output_index = row * x_t->_n_rows + col;
+                int64_t sum = y->_dtype == INT8 ? ((const int8_t*)y->_buffer)[output_index] : ((const int32_t*)y->_buffer)[output_index];
                 for (reduction = 0; reduction < a->_n_cols; ++reduction) {
-                    const int32_t product = _fnblas_int32_arithmetic(left[row * a->_n_cols + reduction], right[col * x_t->_n_cols + reduction], MULTIPLY);
-                    sum = _fnblas_int32_arithmetic(sum, product, ADD);
+                    const int64_t left = a->_dtype == INT8 ? ((const int8_t*)a->_buffer)[row * a->_n_cols + reduction] : ((const int32_t*)a->_buffer)[row * a->_n_cols + reduction];
+                    const int64_t right = x_t->_dtype == INT8 ? ((const int8_t*)x_t->_buffer)[col * x_t->_n_cols + reduction] : ((const int32_t*)x_t->_buffer)[col * x_t->_n_cols + reduction];
+                    sum += left * right;
                 }
-                dst[row * x_t->_n_rows + col] = _fnblas_int32_arithmetic(sum, addend[row * y->_n_cols + col], ADD);
+                if (result->_dtype == INT8) ((int8_t*)result->_buffer)[output_index] = (int8_t)(sum > INT8_MAX ? INT8_MAX : sum < INT8_MIN ? INT8_MIN : sum);
+                else ((int32_t*)result->_buffer)[output_index] = (int32_t)(sum > (result->_dtype == INT4 ? 7 : INT32_MAX) ? (result->_dtype == INT4 ? 7 : INT32_MAX) : sum < (result->_dtype == INT4 ? -8 : INT32_MIN) ? (result->_dtype == INT4 ? -8 : INT32_MIN) : sum);
             }
         }
     }

@@ -15,6 +15,7 @@ int _fnblas_buffer_is_view(uint8_t status);
 int _fnblas_dtype_is_float(fnblas_dtype_t dtype);
 int _fnblas_dtype_is_integer(fnblas_dtype_t dtype);
 int _fnblas_dtype_is_valid(fnblas_dtype_t dtype);
+int _fnblas_dtype_is_same_family(fnblas_dtype_t lhs, fnblas_dtype_t rhs);
 size_t _fnblas_dtype_unpacked_size_of(fnblas_dtype_t dtype);
 size_t _fnblas_packed_buffer_size(size_t n_elements, fnblas_dtype_t dtype);
 

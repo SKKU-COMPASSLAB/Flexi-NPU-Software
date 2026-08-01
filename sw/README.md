@@ -6,4 +6,4 @@
 
 ## flexi-tensor-tests
 
-`Flexi Tensor Library` 기반의 테스트를 제공한다. 자세한 내용은 [flexi-tensor-tests 문서](flexi-tensor-tests/README.md)를 참고한다.
+`Flexi-NPU Tensor Library` 기반의 테스트를 제공한다. 라이브러리 API에 대한 설명은 [공식 문서](../tensor_lib/README.md)를 참고한다. 테스트에 대한 상세한 내용은 [튜토리얼 문서](flexi-tensor-tests/README.md)를 참고한다.

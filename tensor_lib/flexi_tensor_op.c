@@ -30,6 +30,8 @@ flexi_tensor_error_t flexi_tensor_op_linear(flexi_tensor_t* out, const flexi_ten
     fnblas_matrix_t x_matrix = FNBLAS_MATRIX_INITIALIZER;
     fnblas_matrix_t w_matrix = FNBLAS_MATRIX_INITIALIZER;
     fnblas_vector_t bias_vector = FNBLAS_VECTOR_INITIALIZER;
+    fnblas_vector_t converted_bias = FNBLAS_VECTOR_INITIALIZER;
+    const fnblas_vector_t* add_bias = &bias_vector;
     flexi_tensor_error_t error;
     fnblas_error_t blas_error;
     size_t rows = 1;
@@ -41,7 +43,7 @@ flexi_tensor_error_t flexi_tensor_op_linear(flexi_tensor_t* out, const flexi_ten
     flexi_tuple_t out_shape = FLEXI_TUPLE_EMPTY;
     if (out == NULL || x == NULL || w == NULL || out == x || out == w || out == b) return FLEXI_TENSOR_ERR_UNKNOWN;
     if (x->_n_dims == 0 || x->_n_dims > 4 || x->_shape == NULL || x->_strides == NULL || w->_n_dims != 2 || w->_shape == NULL || w->_strides == NULL) return FLEXI_TENSOR_ERR_MISMATCH;
-    if (x->_dtype != w->_dtype || (b != NULL && x->_dtype != b->_dtype)) return FLEXI_TENSOR_ERR_MISMATCH;
+    if (x->_dtype != w->_dtype) return FLEXI_TENSOR_ERR_MISMATCH;
     in_features = x->_shape[x->_n_dims - 1];
     out_features = w->_shape[0];
     if (in_features == 0 || out_features == 0 || w->_shape[1] != in_features) return FLEXI_TENSOR_ERR_MISMATCH;
@@ -52,7 +54,7 @@ flexi_tensor_error_t flexi_tensor_op_linear(flexi_tensor_t* out, const flexi_ten
     }
     if (matmul_kernel == NULL || (b != NULL && add_kernel == NULL)) return FLEXI_TENSOR_ERR_UNSUPPORTED;
     if (flexi_tensor_op_is_initialized(out)) {
-        if (out->_n_dims != x->_n_dims || out->_dtype != x->_dtype || out->_shape == NULL || out->_strides == NULL) return FLEXI_TENSOR_ERR_MISMATCH;
+        if (out->_n_dims != x->_n_dims || out->_shape == NULL || out->_strides == NULL || !_fnblas_dtype_is_same_family(out->_dtype, x->_dtype)) return FLEXI_TENSOR_ERR_MISMATCH;
         for (dim = 0; dim + 1 < x->_n_dims; ++dim) {
             if (out->_shape[dim] != x->_shape[dim]) return FLEXI_TENSOR_ERR_MISMATCH;
         }
@@ -64,6 +66,10 @@ flexi_tensor_error_t flexi_tensor_op_linear(flexi_tensor_t* out, const flexi_ten
         out_shape._values[x->_n_dims - 1] = out_features;
         error = flexi_tensor_create(out, out_shape, x->_dtype);
         if (error != FLEXI_TENSOR_SUCCESS) return error;
+    }
+    if (b != NULL && !_fnblas_dtype_is_same_family(b->_dtype, out->_dtype)) {
+        error = FLEXI_TENSOR_ERR_MISMATCH;
+        goto _flexi_tensor_op_linear_cleanup;
     }
     if (out->_buffer == x->_buffer || out->_buffer == w->_buffer || (b != NULL && out->_buffer == b->_buffer)) {
         error = FLEXI_TENSOR_ERR_MISMATCH;
@@ -92,6 +98,14 @@ flexi_tensor_error_t flexi_tensor_op_linear(flexi_tensor_t* out, const flexi_ten
             error = flexi_tensor_op_from_fnblas_error(blas_error);
             goto _flexi_tensor_op_linear_cleanup;
         }
+        if (bias_vector._dtype != out->_dtype) {
+            blas_error = fnblas_op_vc_cast(&converted_bias, &bias_vector, out->_dtype);
+            if (blas_error != FNBLAS_SUCCESS) {
+                error = flexi_tensor_op_from_fnblas_error(blas_error);
+                goto _flexi_tensor_op_linear_cleanup;
+            }
+            add_bias = &converted_bias;
+        }
         for (row = 0; row < rows; ++row) {
             fnblas_vector_t result_row = FNBLAS_VECTOR_INITIALIZER;
             fnblas_vector_t input_row = FNBLAS_VECTOR_INITIALIZER;
@@ -103,7 +117,7 @@ flexi_tensor_error_t flexi_tensor_op_linear(flexi_tensor_t* out, const flexi_ten
                 error = flexi_tensor_op_from_fnblas_error(blas_error);
                 goto _flexi_tensor_op_linear_cleanup;
             }
-            error = add_kernel(&result_row, &input_row, &bias_vector);
+            error = add_kernel(&result_row, &input_row, add_bias);
             fnblas_vector_destroy(&result_row);
             fnblas_vector_destroy(&input_row);
             if (error != FLEXI_TENSOR_SUCCESS) goto _flexi_tensor_op_linear_cleanup;
@@ -112,6 +126,7 @@ flexi_tensor_error_t flexi_tensor_op_linear(flexi_tensor_t* out, const flexi_ten
     error = FLEXI_TENSOR_SUCCESS;
 
 _flexi_tensor_op_linear_cleanup:
+    fnblas_vector_destroy(&converted_bias);
     fnblas_vector_destroy(&bias_vector);
     fnblas_matrix_destroy(&out_matrix);
     fnblas_matrix_destroy(&w_matrix);
@@ -192,6 +207,8 @@ flexi_tensor_error_t flexi_tensor_op_conv2d(flexi_tensor_t* out, const flexi_ten
     fnblas_matrix_t out_input_view = FNBLAS_MATRIX_INITIALIZER;
     fnblas_matrix_t out_flat_view = FNBLAS_MATRIX_INITIALIZER;
     fnblas_vector_t bias_view = FNBLAS_VECTOR_INITIALIZER;
+    fnblas_vector_t converted_bias = FNBLAS_VECTOR_INITIALIZER;
+    const fnblas_vector_t* add_bias = &bias_view;
     fnblas_vector_t out_row_result = FNBLAS_VECTOR_INITIALIZER;
     fnblas_vector_t out_row_input = FNBLAS_VECTOR_INITIALIZER;
     flexi_tensor_error_t error;
@@ -228,7 +245,7 @@ flexi_tensor_error_t flexi_tensor_op_conv2d(flexi_tensor_t* out, const flexi_ten
     if (out == NULL || x == NULL || w == NULL || out == x || out == w || out == b) return FLEXI_TENSOR_ERR_UNKNOWN;
     if (stride == 0 || dilation == 0) return FLEXI_TENSOR_ERR_MISMATCH;
     if (x->_n_dims != 4 || w->_n_dims != 4 || x->_shape == NULL || x->_strides == NULL || w->_shape == NULL || w->_strides == NULL) return FLEXI_TENSOR_ERR_MISMATCH;
-    if (x->_dtype != w->_dtype || (b != NULL && x->_dtype != b->_dtype)) return FLEXI_TENSOR_ERR_MISMATCH;
+    if (x->_dtype != w->_dtype) return FLEXI_TENSOR_ERR_MISMATCH;
 
     n_batches = x->_shape[0];
     input_height = x->_shape[1];
@@ -256,12 +273,16 @@ flexi_tensor_error_t flexi_tensor_op_conv2d(flexi_tensor_t* out, const flexi_ten
     out_shape = FLEXI_TUPLE(n_batches, output_height, output_width, output_channels);
 
     if (flexi_tensor_op_is_initialized(out)) {
-        if (out->_n_dims != 4 || out->_dtype != x->_dtype || out->_shape == NULL || out->_strides == NULL) return FLEXI_TENSOR_ERR_MISMATCH;
+        if (out->_n_dims != 4 || out->_shape == NULL || out->_strides == NULL || !_fnblas_dtype_is_same_family(out->_dtype, x->_dtype)) return FLEXI_TENSOR_ERR_MISMATCH;
         if (out->_shape[0] != n_batches || out->_shape[1] != output_height || out->_shape[2] != output_width || out->_shape[3] != output_channels) return FLEXI_TENSOR_ERR_MISMATCH;
     } else {
         out_created = 1;
         error = flexi_tensor_create(out, out_shape, x->_dtype);
         if (error != FLEXI_TENSOR_SUCCESS) return error;
+    }
+    if (b != NULL && !_fnblas_dtype_is_same_family(b->_dtype, out->_dtype)) {
+        error = FLEXI_TENSOR_ERR_MISMATCH;
+        goto _flexi_tensor_op_conv2d_cleanup;
     }
     if ((out->_buffer == x->_buffer || out->_buffer == w->_buffer || (b != NULL && out->_buffer == b->_buffer)) && n_batches != 0) {
         error = FLEXI_TENSOR_ERR_MISMATCH;
@@ -292,7 +313,7 @@ flexi_tensor_error_t flexi_tensor_op_conv2d(flexi_tensor_t* out, const flexi_ten
     if (output_size != 0) memset(out->_buffer, 0, output_size);
 
     /* Reuse one (OW, K) partial-sum matrix for every filter position. */
-    blas_error = fnblas_matrix_create(&partial_sum, output_width, output_channels, x->_dtype);
+    blas_error = fnblas_matrix_create(&partial_sum, output_width, output_channels, out->_dtype);
     if (blas_error != FNBLAS_SUCCESS) {
         error = flexi_tensor_op_from_fnblas_error(blas_error);
         goto _flexi_tensor_op_conv2d_cleanup;
@@ -363,6 +384,14 @@ flexi_tensor_error_t flexi_tensor_op_conv2d(flexi_tensor_t* out, const flexi_ten
             error = flexi_tensor_op_from_fnblas_error(blas_error);
             goto _flexi_tensor_op_conv2d_cleanup;
         }
+        if (bias_view._dtype != out->_dtype) {
+            blas_error = fnblas_op_vc_cast(&converted_bias, &bias_view, out->_dtype);
+            if (blas_error != FNBLAS_SUCCESS) {
+                error = flexi_tensor_op_from_fnblas_error(blas_error);
+                goto _flexi_tensor_op_conv2d_cleanup;
+            }
+            add_bias = &converted_bias;
+        }
         for (output_row = 0; output_row < flat_row; ++output_row) {
             blas_error = fnblas_matrix_create_row_vector_view(&out_row_result, &out_flat_view, output_row);
             if (blas_error == FNBLAS_SUCCESS) blas_error = fnblas_matrix_create_row_vector_view(&out_row_input, &out_flat_view, output_row);
@@ -370,7 +399,7 @@ flexi_tensor_error_t flexi_tensor_op_conv2d(flexi_tensor_t* out, const flexi_ten
                 error = flexi_tensor_op_from_fnblas_error(blas_error);
                 goto _flexi_tensor_op_conv2d_cleanup;
             }
-            error = add_bias_kernel(&out_row_result, &out_row_input, &bias_view);
+            error = add_bias_kernel(&out_row_result, &out_row_input, add_bias);
             fnblas_vector_destroy(&out_row_input);
             fnblas_vector_destroy(&out_row_result);
             if (error != FLEXI_TENSOR_SUCCESS) goto _flexi_tensor_op_conv2d_cleanup;
@@ -381,6 +410,7 @@ flexi_tensor_error_t flexi_tensor_op_conv2d(flexi_tensor_t* out, const flexi_ten
 _flexi_tensor_op_conv2d_cleanup:
     fnblas_vector_destroy(&out_row_input);
     fnblas_vector_destroy(&out_row_result);
+    fnblas_vector_destroy(&converted_bias);
     fnblas_vector_destroy(&bias_view);
     fnblas_matrix_destroy(&out_flat_view);
     fnblas_matrix_destroy(&out_input_view);

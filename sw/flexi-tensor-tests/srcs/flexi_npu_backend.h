@@ -59,6 +59,7 @@ extern const flexi_tensor_backend_t flexi_npu_backend;
 flexi_tensor_error_t flexi_npu_init(flexi_npu_context_t ctx);
 int flexi_npu_is_initialized();
 flexi_tensor_error_t flexi_npu_op_mm_matmul(fnblas_matrix_t* result, const fnblas_matrix_t* lhs, const fnblas_matrix_t* rhs_t);
+flexi_tensor_error_t flexi_npu_op_rvv_vq_quant_per_tensor(fnblas_vector_t* result, const fnblas_vector_t* input, const fnblas_scalar_t* scale, const fnblas_scalar_t* zero_point, fnblas_dtype_t qdtype);
 
 #ifdef __cplusplus
 }
