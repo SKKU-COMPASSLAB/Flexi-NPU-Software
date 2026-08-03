@@ -55,8 +55,9 @@ make
 make sim-install-dim32
 
 # run Flexi-NPU ISA tests
-make -C sw/flexi-isa-tests/lib
-make -C sw/flexi-isa-tests
+cd sw/flexi-isa-tests
+make -j
+cd ../..
 spike --isa=rv64gcv --extension=flexi --extension=flexi_hx ./sw/flexi-isa-tests/build/flexi_gemm_bf16_test-baremetal
 
 # run tests with tensor library
@@ -76,8 +77,9 @@ make
 make sim-install-dim128
 
 # run Flexi-NPU ISA tests
-make -C sw/flexi-isa-tests/lib
-make -C sw/flexi-isa-tests
+cd sw/flexi-isa-tests
+make -j
+cd ../..
 spike --isa=rv64gcv --extension=flexi --extension=flexi_hx ./sw/flexi-isa-tests/build/flexi_gemm_fp4_test-baremetal
 
 # run tests with tensor library
