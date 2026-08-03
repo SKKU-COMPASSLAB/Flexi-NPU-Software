@@ -243,8 +243,8 @@ void flexi_t::DMALoad(reg_t load_rs1, reg_t load_rs2)
   static size_t fp4_dma_diagnostic_count = 0;
   auto const off_addr = ((load_rs1 & 0x3FFFFFFFFF) << 10) | ((load_rs2 >> 54) & 0x3FF);
   auto const onc_addr = (load_rs1 >> 38) & 0x3FFFFFF;
-  auto row_numel = (load_rs2 >> 7) & 0x3FF;
-  auto total_row = (load_rs2 >> 17) & 0x3FF;
+  auto       row_numel = (load_rs2 >> 7) & 0x3FF;
+  auto       total_row = (load_rs2 >> 17) & 0x3FF;
   auto const stride = (load_rs2 >> 27) & 0x1FFF;
   auto const trans = (load_rs2 >> 40) & 0x1;
   auto const dtype = (load_rs2 >> 41) & 0x7;
@@ -256,13 +256,13 @@ void flexi_t::DMALoad(reg_t load_rs1, reg_t load_rs2)
     fp4_dma_diagnostic_count++;
   }
 
-  auto const fnblas_dtype = static_cast<fnblas_dtype_t>(dtype);
-  auto const dtype_size = fnblas_dtype_size_of(fnblas_dtype);
-  auto const dtype_pack_size = fnblas_dtype_pack_size_of(fnblas_dtype);
-  auto const stride_size = (stride * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
-  auto const row_size = (row_numel * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
-  auto const padded_row_size = ((row_numel + zero_pad) * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
-  auto const zero_pad_size = padded_row_size - row_size;
+  auto fnblas_dtype = static_cast<fnblas_dtype_t>(dtype);
+  auto dtype_size = fnblas_dtype_size_of(fnblas_dtype);
+  auto dtype_pack_size = fnblas_dtype_pack_size_of(fnblas_dtype);
+  auto stride_size = (stride * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
+  auto row_size = (row_numel * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
+  auto padded_row_size = ((row_numel + zero_pad) * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
+  auto zero_pad_size = padded_row_size - row_size;
 
   byte_t *dma_buffer = (byte_t *)malloc(row_size * total_row);
   byte_t *onc_buffer = onc_mem + onc_addr;
@@ -281,6 +281,14 @@ void flexi_t::DMALoad(reg_t load_rs1, reg_t load_rs2)
     fnblas_matrix_get_packed_buffer(&transposed_matrix, dma_buffer);
     fnblas_matrix_destroy(&original_matrix);
     fnblas_matrix_destroy(&transposed_matrix);
+
+    auto temp = row_numel;
+    row_numel = total_row;
+    total_row = temp;
+
+    row_size = row_numel * dtype_size / dtype_pack_size;
+    padded_row_size = (row_numel + zero_pad) * dtype_size / dtype_pack_size;
+    zero_pad_size = padded_row_size - row_size;
   }
 
   for (size_t row_idx = 0; row_idx < total_row; row_idx++) {
@@ -295,23 +303,30 @@ void flexi_t::DMAStore(reg_t store_rs1, reg_t store_rs2)
 {
   auto const off_addr = ((store_rs1 & 0x3FFFFFFFFF) << 10) | ((store_rs2 >> 54) & 0x3FF);
   auto const onc_addr = (store_rs1 >> 38) & 0x3FFFFFF;
-  auto const row_numel = (store_rs2 >> 7) & 0x3FF;
-  auto const total_row = (store_rs2 >> 17) & 0x3FF;
+  auto       row_numel = (store_rs2 >> 7) & 0x3FF;    // zero pad included
+  auto       total_row = (store_rs2 >> 17) & 0x3FF;
   auto const stride = (store_rs2 >> 27) & 0x1FFF;
   auto const trans = (store_rs2 >> 40) & 0x1;
   auto const dtype = (store_rs2 >> 41) & 0x7;
   auto const zero_pad = (store_rs2 >> 44) & 0x3FF;
   auto const opcode = store_rs2 & 0x3F;
 
-  auto const fnblas_dtype = static_cast<fnblas_dtype_t>(dtype);
-  auto const dtype_size = fnblas_dtype_size_of(fnblas_dtype);
-  auto const dtype_pack_size = fnblas_dtype_pack_size_of(fnblas_dtype);
-  auto const stride_size = (stride * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
-  auto const row_size = (row_numel * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
-  auto const padded_row_size = ((row_numel + zero_pad) * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
-  auto const dma_buffer_size = row_size * total_row;
+  if (row_numel < zero_pad) {
+    fprintf(stderr, "flexi_t::DMAStore: Invalid configuration: row_numel (%lu) < zero_pad (%lu)\n", row_numel, zero_pad);
+    return;
+  }
+  if (row_numel == zero_pad) {
+    return; // nothing to store
+  }
 
-  byte_t *dma_buffer = (byte_t *)malloc(dma_buffer_size);
+  auto fnblas_dtype = static_cast<fnblas_dtype_t>(dtype);
+  auto dtype_size = fnblas_dtype_size_of(fnblas_dtype);
+  auto dtype_pack_size = fnblas_dtype_pack_size_of(fnblas_dtype);
+  auto stride_size = (stride * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
+  auto padded_row_size = (row_numel * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
+  auto row_size = ((row_numel - zero_pad) * dtype_size + dtype_pack_size - 1) / dtype_pack_size;
+  
+  byte_t *dma_buffer = (byte_t *)malloc(row_size * total_row);
   byte_t *onc_buffer = onc_mem + onc_addr;
 
   for (size_t row_idx = 0; row_idx < total_row; row_idx++) {
@@ -322,12 +337,18 @@ void flexi_t::DMAStore(reg_t store_rs1, reg_t store_rs2)
     fnblas_matrix_t transposed_matrix = FNBLAS_MATRIX_INITIALIZER;
     fnblas_matrix_t restored_matrix = FNBLAS_MATRIX_INITIALIZER;
 
-    fnblas_matrix_create(&transposed_matrix, row_numel, total_row, fnblas_dtype);
+    fnblas_matrix_create(&transposed_matrix, total_row, row_numel - zero_pad, fnblas_dtype);
     fnblas_matrix_initialize_from_packed_buffer(&transposed_matrix, dma_buffer);
     fnblas_op_mi_transpose(&restored_matrix, &transposed_matrix);
     fnblas_matrix_get_packed_buffer(&restored_matrix, dma_buffer);
     fnblas_matrix_destroy(&transposed_matrix);
     fnblas_matrix_destroy(&restored_matrix);
+
+    auto temp = row_numel;
+    row_numel = total_row;
+    total_row = temp - zero_pad;
+
+    row_size = row_numel * dtype_size / dtype_pack_size;
   }
 
   for (size_t row_idx = 0; row_idx < total_row; row_idx++) {
