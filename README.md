@@ -58,11 +58,11 @@ make sim-install-dim32
 cd sw/flexi-isa-tests
 make -j
 cd ../..
-spike --isa=rv64gcv --extension=flexi --extension=flexi_hx ./sw/flexi-isa-tests/build/flexi_gemm_bf16_test-baremetal
+spike --isa=rv64gcv_zvl512b_zicsr_zifencei_zicntr_zihpm --extension=flexi --extension=flexi_hx ./sw/flexi-isa-tests/build/flexi_gemm_bf16_test-baremetal
 
 # run tests with tensor library
 make -C sw/flexi-tensor-tests
-spike --isa=rv64gcv --extension=flexi --extension=flexi_hx ./sw/flexi-tensor-tests/bin/t1_validate_matmul_kernel 
+spike --isa=rv64gcv_zvl512b_zicsr_zifencei_zicntr_zihpm --extension=flexi --extension=flexi_hx ./sw/flexi-tensor-tests/bin/t1_validate_matmul_kernel 
 ```
 
 ### `DIM=128` Simulation Model
@@ -80,11 +80,11 @@ make sim-install-dim128
 cd sw/flexi-isa-tests
 make -j
 cd ../..
-spike --isa=rv64gcv --extension=flexi --extension=flexi_hx ./sw/flexi-isa-tests/build/flexi_gemm_fp4_test-baremetal
+spike --isa=rv64gcv_zvl512b_zicsr_zifencei_zicntr_zihpm --extension=flexi --extension=flexi_hx ./sw/flexi-isa-tests/build/flexi_gemm_fp4_test-baremetal
 
 # run tests with tensor library
 make -C sw/flexi-tensor-tests
-spike --isa=rv64gcv --extension=flexi --extension=flexi_hx ./sw/flexi-tensor-tests/bin/t4_fp4_validate_matmul_kernel 
+spike --isa=rv64gcv_zvl512b_zicsr_zifencei_zicntr_zihpm --extension=flexi --extension=flexi_hx ./sw/flexi-tensor-tests/bin/t4_fp4_validate_matmul_kernel 
 ```
 
 ## Documentation
